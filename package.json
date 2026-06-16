@@ -1,0 +1,14 @@
+{
+  "name": "gold-tracker",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:backend": "cd backend && go run cmd/main.go",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build:backend": "cd backend && go build -o main cmd/main.go"
+  }
+}

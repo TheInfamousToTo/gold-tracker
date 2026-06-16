@@ -1,0 +1,26 @@
+services:
+  gold-tracker-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: gold-tracker-api
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - DB_HOST=${DB_HOST:-localhost}
+      - DB_PORT=5432
+      - DB_NAME=gold_tracker
+      - DB_USER=gold_admin
+      - DB_PASSWORD=${GOLD_DB_PASS}
+    ports:
+      - "3000:3000"
+
+  gold-tracker-ui:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: gold-tracker-ui
+    restart: unless-stopped
+    ports:
+      - "3960:80"
+
