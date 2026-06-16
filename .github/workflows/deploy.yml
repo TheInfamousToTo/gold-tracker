@@ -18,6 +18,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Read version
+        id: version
+        run: echo "VERSION=$(cat version)" >> $GITHUB_OUTPUT
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -35,7 +39,8 @@ jobs:
           images: ghcr.io/${{ github.repository }}-api
           tags: |
             type=ref,event=branch
-            type=semver,pattern={{version}}
+            type=raw,value=${{ steps.version.outputs.VERSION }}
+            type=raw,value=latest
             type=sha,format=long
 
       - name: Build and push Backend
@@ -55,7 +60,8 @@ jobs:
           images: ghcr.io/${{ github.repository }}-ui
           tags: |
             type=ref,event=branch
-            type=semver,pattern={{version}}
+            type=raw,value=${{ steps.version.outputs.VERSION }}
+            type=raw,value=latest
             type=sha,format=long
 
       - name: Build and push Frontend
