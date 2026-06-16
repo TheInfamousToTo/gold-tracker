@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/your-username/gold-tracker/backend/internal/model"
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/model"
 )
 
 func (r *PostgresRepository) GetPrices(ctx context.Context, limit int) ([]model.GoldPrice, error) {
@@ -14,7 +14,7 @@ func (r *PostgresRepository) GetPrices(ctx context.Context, limit int) ([]model.
 	}
 	defer rows.Close()
 
-	var prices []model.GoldPrice
+	prices := []model.GoldPrice{}
 	for rows.Next() {
 		var p model.GoldPrice
 		var priceDate time.Time

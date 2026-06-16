@@ -5,8 +5,8 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
-	"github.com/your-username/gold-tracker/backend/internal/model"
-	"github.com/your-username/gold-tracker/backend/internal/repository"
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/model"
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/repository"
 )
 
 type Handler struct {

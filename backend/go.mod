@@ -1,4 +1,4 @@
-module github.com/your-username/gold-tracker/backend
+module github.com/TheInfamousToTo/gold-tracker/backend
 
 go 1.25
 

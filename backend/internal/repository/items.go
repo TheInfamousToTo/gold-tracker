@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/your-username/gold-tracker/backend/internal/model"
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/model"
 )
 
 func (r *PostgresRepository) GetItems(ctx context.Context) ([]model.GoldItem, error) {

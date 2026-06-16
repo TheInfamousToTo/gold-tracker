@@ -7,7 +7,7 @@ services:
     restart: unless-stopped
     environment:
       - PORT=3000
-      - DB_HOST=192.168.31.84
+      - DB_HOST=${DB_HOST}
       - DB_PORT=5432
       - DB_NAME=gold_tracker
       - DB_USER=gold_admin

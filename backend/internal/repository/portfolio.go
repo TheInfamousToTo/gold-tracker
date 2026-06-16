@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/your-username/gold-tracker/backend/internal/model"
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/model"
 )
 
 func (r *PostgresRepository) GetPortfolioSummary(ctx context.Context) (model.PortfolioSummary, error) {

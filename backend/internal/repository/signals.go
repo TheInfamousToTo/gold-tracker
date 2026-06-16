@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"github.com/your-username/gold-tracker/backend/internal/model"
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/model"
 )
 
 func (r *PostgresRepository) GetSignals(ctx context.Context, limit int) ([]model.SignalLog, error) {
@@ -13,7 +13,7 @@ func (r *PostgresRepository) GetSignals(ctx context.Context, limit int) ([]model
 	}
 	defer rows.Close()
 
-	var signals []model.SignalLog
+	signals := []model.SignalLog{}
 	for rows.Next() {
 		var s model.SignalLog
 		err := rows.Scan(

@@ -7,8 +7,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"github.com/your-username/gold-tracker/backend/internal/api"
-	"github.com/your-username/gold-tracker/backend/internal/repository"
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/api"
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/repository"
 )
 
 func main() {

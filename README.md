@@ -1,82 +1,64 @@
 # Gold Tracker 🚀
 
-Enterprise-grade self-hosted app for logging gold purchases, tracking spot prices, and portfolio management. Now powered by a high-performance Go backend and a modern React frontend.
+An enterprise-grade, self-hosted application for logging gold purchases, tracking spot prices, and managing your physical gold portfolio. Built for reliability, speed, and modern observability.
 
-## Stack
+## 🌟 Key Features
 
-- **Backend**: Go (Gin) + PostgreSQL (`pgx`)
-- **Frontend**: React + Vite + Tailwind (TypeScript ready)
-- **Infrastructure**: Docker Compose, npm workspaces monorepo
-- **Deployment**: Integrated with Traefik for automated TLS
+- **Portfolio Management:** Log purchases with detailed metadata (karat, weight, vendor, notes).
+- **Live Price Tracking:** Monitor current spot prices for 24K, 22K, 21K, and 18K gold.
+- **Profit/Loss Analysis:** Real-time calculation of gain/loss based on current market data.
+- **n8n Integration:** Designed to work with n8n for automated price feeds and AI signals.
+- **Grafana Ready:** Schema optimized for Grafana dashboards and long-term history tracking.
 
-## Architecture
+## 🛠️ Technology Stack
 
-This project is structured as a monorepo for better maintainability and open-source readiness:
+- **Backend:** [Go](https://go.dev/) (Gin Gonic) - High-performance, type-safe API.
+- **Frontend:** [React](https://reactjs.org/) (Vite + Tailwind CSS) - Fast, responsive, and modern UI.
+- **Database:** [PostgreSQL](https://www.postgresql.org/) - Robust relational storage.
+- **Infrastructure:** [Docker](https://www.docker.com/) & [GitHub Actions](https://github.com/features/actions) - Containerized deployment and automated CI/CD.
 
-- `/backend`: High-performance API written in Go.
-- `/frontend`: Modern React application.
-- `/migrations`: (Planned) Structured SQL migrations.
+## 🏗️ How it Works
 
-## Getting Started
+The system consists of three main components working in harmony:
 
-### 1. Database setup
+1.  **The API (Go):** Handles all business logic, Karat conversions, and portfolio calculations. It communicates directly with the PostgreSQL database.
+2.  **The UI (React):** A modern dashboard that fetches data from the API and provides a clean interface for adding and tracking items.
+3.  **The Ecosystem:**
+    -   **Price Feeds (External):** An n8n workflow typically fetches live spot prices from external APIs and pushes them into the `gold_prices` table.
+    -   **AI Signals:** Another workflow can process price history to generate buy/sell/hold signals stored in the `signals_log` table.
+    -   **Dashboards:** Use Grafana to visualize your portfolio growth over time by reading directly from the `v_portfolio_summary` view.
 
-Run the setup script against your PostgreSQL instance. It creates the database, app user, tables, and views.
+## 🚀 Getting Started
+
+### 1. Database Setup
+Ensure you have a PostgreSQL instance running. Use the provided setup script to initialize the schema, including all necessary tables and the portfolio summary view.
 
 ```bash
 chmod +x setup_gold_db.sh
 ./setup_gold_db.sh
 ```
 
-### 2. Configure environment
+### 2. Configuration
+Copy the `.env.example` to `.env` and configure your database credentials.
 
 ```bash
 cp .env.example .env
-# Set GOLD_DB_PASS to your database password
 ```
 
-### 3. Build and run (Docker)
-
-The easiest way to get started is using Docker Compose:
+### 3. Build and Deploy
+The entire stack is containerized for easy deployment:
 
 ```bash
 docker compose up -d --build
 ```
 
-The app will be available at `https://gold.satrawi.com` (via Traefik) and locally on port `3960`.
+## 📂 Project Structure
 
-## API reference
+- `/backend`: The Go API source code.
+- `/frontend`: The React application and its Nginx configuration.
+- `/migrations`: Structured SQL logic for the database.
+- `.github/workflows`: Automated build and deployment pipelines.
 
-The API is now served by the Go backend on port `3000`.
+## 🤝 Contributing
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/api/health` | DB connectivity check |
-| GET | `/api/items` | List all purchases |
-| POST | `/api/items` | Add a purchase |
-| PUT | `/api/items/:id` | Update a purchase |
-| DELETE | `/api/items/:id` | Remove a purchase |
-| GET | `/api/portfolio` | Holdings + current value, gain/loss, totals |
-| GET | `/api/prices` | Recent spot prices |
-| POST | `/api/prices` | Add/update a spot price |
-| GET | `/api/signals` | AI buy/sell/hold signal history |
-
-## Development
-
-### Backend (Go)
-Requires Go 1.23+ or Docker.
-```bash
-cd backend
-go run cmd/main.go
-```
-
-### Frontend (React)
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-## Contributing
-
-We welcome contributions! Please feel free to submit a Pull Request. This project is now structured for scale and open-source collaboration.
+We welcome contributions! Please feel free to submit a Pull Request.
