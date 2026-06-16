@@ -1,47 +1,28 @@
 services:
-  db:
-    image: postgres:16-alpine
-    container_name: gold-tracker-db
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=gold_tracker
-      - POSTGRES_USER=gold_admin
-      - POSTGRES_PASSWORD=gold_pass
-    volumes:
-      - gold_db_data:/var/lib/postgresql/data
-    networks:
-      - gold-network
-
-  api:
-    image: ghcr.io/theinfamoustoto/gold-tracker-api:latest
+  gold-tracker-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: gold-tracker-api
     restart: unless-stopped
     environment:
       - PORT=3000
-      - DB_HOST=db
+      - DB_HOST=${DB_HOST}
       - DB_PORT=5432
       - DB_NAME=gold_tracker
       - DB_USER=gold_admin
-      - DB_PASSWORD=gold_pass
-    depends_on:
-      - db
-    networks:
-      - gold-network
+      - DB_PASSWORD=${GOLD_DB_PASS}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "3065:3000"
 
-  ui:
-    image: ghcr.io/theinfamoustoto/gold-tracker-ui:latest
+  gold-tracker-ui:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     container_name: gold-tracker-ui
     restart: unless-stopped
     ports:
       - "3960:80"
-    depends_on:
-      - api
-    networks:
-      - gold-network
 
-networks:
-  gold-network:
-    driver: bridge
-
-volumes:
-  gold_db_data:
