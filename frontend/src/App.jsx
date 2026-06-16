@@ -255,6 +255,7 @@ export default function App() {
                       <th className="px-8 py-4">Asset Identification</th>
                       <th className="px-8 py-4">Purity</th>
                       <th className="px-8 py-4 text-right">Mass (g)</th>
+                      <th className="px-8 py-4 text-right">Entry Price</th>
                       <th className="px-8 py-4 text-right">Acquisition</th>
                       <th className="px-8 py-4 text-right">Market Value</th>
                       <th className="px-8 py-4 text-right">Performance</th>
@@ -272,6 +273,7 @@ export default function App() {
                           <Badge variant={item.purity_karat >= 22 ? 'success' : 'default'}>{item.purity_karat}K Standard</Badge>
                         </td>
                         <td className="px-8 py-6 text-right font-mono text-sm text-gray-300">{fmt(item.weight_grams, 2)}</td>
+                        <td className="px-8 py-6 text-right font-mono text-sm text-amber-500/80">{fmt(item.price_per_gram_paid, 3)}</td>
                         <td className="px-8 py-6 text-right font-mono text-sm text-gray-300">{fmt(item.price_paid_total, 2)}</td>
                         <td className="px-8 py-6 text-right font-mono text-sm text-white">{fmt(item.current_value, 2)}</td>
                         <td className="px-8 py-6 text-right">
