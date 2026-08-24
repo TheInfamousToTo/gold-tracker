@@ -105,8 +105,8 @@ func TestRunOnceSuccessPersistsSignal(t *testing.T) {
 	}}
 	svc := NewService(repo, runner, testConfig())
 
-	if !svc.TryStart("manual") {
-		t.Fatal("TryStart should succeed when nothing is running")
+	if err := svc.TryStart("manual"); err != nil {
+		t.Fatalf("TryStart should succeed when nothing is running: %v", err)
 	}
 	svc.RunOnce(context.Background(), "manual")
 
@@ -154,7 +154,7 @@ func TestRunOnceRetriesOnceThenSucceeds(t *testing.T) {
 	}}
 	svc := NewService(repo, runner, testConfig())
 
-	svc.TryStart("manual")
+	_ = svc.TryStart("manual")
 	svc.RunOnce(context.Background(), "manual")
 
 	if runner.callCount() != 2 {
@@ -175,7 +175,7 @@ func TestRunOnceFailsTwicePersistsNothing(t *testing.T) {
 	}}
 	svc := NewService(repo, runner, testConfig())
 
-	svc.TryStart("manual")
+	_ = svc.TryStart("manual")
 	svc.RunOnce(context.Background(), "manual")
 
 	if runner.callCount() != 2 {
@@ -196,7 +196,7 @@ func TestRunOnceReportsCLIError(t *testing.T) {
 	}}
 	svc := NewService(repo, runner, testConfig())
 
-	svc.TryStart("manual")
+	_ = svc.TryStart("manual")
 	svc.RunOnce(context.Background(), "manual")
 
 	st := svc.GetStatus()
@@ -215,7 +215,7 @@ func TestRunOnceReportsTransportError(t *testing.T) {
 	}}
 	svc := NewService(repo, runner, testConfig())
 
-	svc.TryStart("manual")
+	_ = svc.TryStart("manual")
 	svc.RunOnce(context.Background(), "manual")
 
 	if st := svc.GetStatus(); st.LastError == "" {
@@ -231,7 +231,7 @@ func TestRunOnceReportsPersistFailure(t *testing.T) {
 	}}
 	svc := NewService(repo, runner, testConfig())
 
-	svc.TryStart("manual")
+	_ = svc.TryStart("manual")
 	svc.RunOnce(context.Background(), "manual")
 
 	st := svc.GetStatus()
@@ -252,13 +252,13 @@ func TestTryStartBlocksConcurrentRun(t *testing.T) {
 	}}
 	svc := NewService(repo, runner, testConfig())
 
-	if !svc.TryStart("manual") {
-		t.Fatal("first TryStart should succeed")
+	if err := svc.TryStart("manual"); err != nil {
+		t.Fatalf("first TryStart should succeed: %v", err)
 	}
 	go svc.RunOnce(context.Background(), "manual")
 
-	if svc.TryStart("manual") {
-		t.Fatal("second TryStart should fail while a run is in flight")
+	if err := svc.TryStart("manual"); !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("second TryStart error = %v, want ErrAlreadyRunning", err)
 	}
 
 	close(release)
@@ -358,7 +358,7 @@ func TestMaybeAutoGenerateSkipsWhileManualRunInFlight(t *testing.T) {
 	}}
 	svc := NewService(repo, runner, testConfig())
 
-	svc.TryStart("manual")
+	_ = svc.TryStart("manual")
 	go svc.RunOnce(context.Background(), "manual")
 
 	svc.MaybeAutoGenerate(context.Background())
@@ -422,5 +422,53 @@ func TestGatherOrdersPricesOldestFirst(t *testing.T) {
 	}
 	if in.Prices[len(in.Prices)-1].Date != "2026-08-03" {
 		t.Errorf("last price = %s, want the newest (2026-08-03)", in.Prices[len(in.Prices)-1].Date)
+	}
+}
+
+func TestTryStartManualHonorsCooldown(t *testing.T) {
+	cfg := testConfig()
+	cfg.ManualCooldown = time.Hour
+	svc := NewService(newFakeRepo(), &fakeRunner{}, cfg)
+
+	if err := svc.TryStart("manual"); err != nil {
+		t.Fatalf("first manual start: %v", err)
+	}
+	svc.finish("", true)
+
+	if err := svc.TryStart("manual"); !errors.Is(err, ErrCoolingDown) {
+		t.Fatalf("second manual start error = %v, want ErrCoolingDown", err)
+	}
+}
+
+func TestTryStartManualAllowedAfterCooldownElapses(t *testing.T) {
+	cfg := testConfig()
+	cfg.ManualCooldown = 10 * time.Millisecond
+	svc := NewService(newFakeRepo(), &fakeRunner{}, cfg)
+
+	if err := svc.TryStart("manual"); err != nil {
+		t.Fatalf("first manual start: %v", err)
+	}
+	svc.finish("", true)
+	time.Sleep(20 * time.Millisecond)
+
+	if err := svc.TryStart("manual"); err != nil {
+		t.Fatalf("manual start after the cooldown elapsed: %v", err)
+	}
+}
+
+// The daily cap already bounds automatic runs, so the manual cooldown
+// must not also block them.
+func TestTryStartAutoIgnoresManualCooldown(t *testing.T) {
+	cfg := testConfig()
+	cfg.ManualCooldown = time.Hour
+	svc := NewService(newFakeRepo(), &fakeRunner{}, cfg)
+
+	if err := svc.TryStart("manual"); err != nil {
+		t.Fatalf("first manual start: %v", err)
+	}
+	svc.finish("", true)
+
+	if err := svc.TryStart("auto"); err != nil {
+		t.Fatalf("auto start should ignore the manual cooldown, got %v", err)
 	}
 }

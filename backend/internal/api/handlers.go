@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -168,8 +169,12 @@ func (h *Handler) GenerateSignal(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI is not configured"})
 		return
 	}
-	if !h.AI.TryStart("manual") {
-		c.JSON(http.StatusConflict, gin.H{"error": "a signal generation is already running"})
+	if err := h.AI.TryStart("manual"); err != nil {
+		status := http.StatusConflict
+		if errors.Is(err, ai.ErrCoolingDown) {
+			status = http.StatusTooManyRequests
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
 		return
 	}
 	go h.AI.RunOnce(context.Background(), "manual")

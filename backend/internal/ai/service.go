@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -34,13 +35,22 @@ type SignalRepo interface {
 	GetLatestSignal(ctx context.Context, source string) (*model.SignalLog, error)
 }
 
+// ErrAlreadyRunning means a generation is in flight; ErrCoolingDown
+// means the manual cooldown has not elapsed. Callers map these to 409
+// and 429 respectively.
+var (
+	ErrAlreadyRunning = errors.New("a signal generation is already running")
+	ErrCoolingDown    = errors.New("please wait before generating another signal")
+)
+
 type Service struct {
 	repo   SignalRepo
 	runner Runner
 	cfg    Config
 
-	mu     sync.Mutex
-	status Status
+	mu           sync.Mutex
+	status       Status
+	lastManualAt time.Time
 }
 
 func NewService(repo SignalRepo, runner Runner, cfg Config) *Service {
@@ -59,20 +69,32 @@ func (s *Service) GetStatus() Status {
 	return st
 }
 
-// TryStart atomically claims the single-flight slot, returning false
-// without side effects when a run is already in progress. Callers must
-// win this before calling RunOnce.
-func (s *Service) TryStart(source string) bool {
+// TryStart atomically claims the single-flight slot, returning nil when
+// the caller may proceed to RunOnce. It has no side effects on refusal.
+//
+// Manual starts additionally honour a cooldown. The API has no
+// authentication, so without one anything that can reach it could spend
+// subscription quota shared with the owner's interactive Claude Code
+// use. Automatic starts skip it: they already have the daily cap.
+func (s *Service) TryStart(source string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.status.Running {
-		return false
+		return ErrAlreadyRunning
 	}
 	now := time.Now()
+	if source == "manual" && !s.lastManualAt.IsZero() && now.Sub(s.lastManualAt) < s.cfg.ManualCooldown {
+		return ErrCoolingDown
+	}
+	if source == "manual" {
+		s.lastManualAt = now
+	}
+
 	s.status.Running = true
 	s.status.StartedAt = &now
 	s.status.LastError = ""
-	return true
+	return nil
 }
 
 func (s *Service) finish(errMsg string, generated bool) {
@@ -210,7 +232,7 @@ func (s *Service) MaybeAutoGenerate(ctx context.Context) {
 	if latest != nil && time.Since(latest.SignalDate).Hours() < s.cfg.AutoMinHours {
 		return
 	}
-	if !s.TryStart("auto") {
+	if err := s.TryStart("auto"); err != nil {
 		return
 	}
 	// Detached from the request context so the run survives the HTTP

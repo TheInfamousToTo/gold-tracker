@@ -44,6 +44,11 @@ func newTestHandler(enabled bool, runner ai.Runner) *Handler {
 	return &Handler{AI: ai.NewService(stubRepo{}, runner, cfg)}
 }
 
+func newTestHandlerWithCooldown(cooldown time.Duration, runner ai.Runner) *Handler {
+	cfg := ai.Config{Enabled: true, Model: "claude-opus-5", Timeout: 5 * time.Second, AutoMinHours: 24, ManualCooldown: cooldown}
+	return &Handler{AI: ai.NewService(stubRepo{}, runner, cfg)}
+}
+
 func waitUntilIdle(t *testing.T, h *Handler) {
 	t.Helper()
 	for i := 0; i < 200; i++ {
@@ -133,4 +138,33 @@ func TestSignalStatusReportsDisabled(t *testing.T) {
 	if got.Enabled {
 		t.Error("enabled = true, want false so the UI renders the not-configured state")
 	}
+}
+
+// The API is unauthenticated, so repeated on-demand generation must be
+// rate limited rather than left free to spend subscription quota.
+func TestGenerateSignalReturns429DuringCooldown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	instant := &instantRunner{}
+	h := newTestHandlerWithCooldown(time.Hour, instant)
+	r := gin.New()
+	r.POST("/api/signals/generate", h.GenerateSignal)
+
+	w1 := httptest.NewRecorder()
+	r.ServeHTTP(w1, httptest.NewRequest(http.MethodPost, "/api/signals/generate", nil))
+	if w1.Code != http.StatusAccepted {
+		t.Fatalf("first call status = %d, want 202", w1.Code)
+	}
+	waitUntilIdle(t, h)
+
+	w2 := httptest.NewRecorder()
+	r.ServeHTTP(w2, httptest.NewRequest(http.MethodPost, "/api/signals/generate", nil))
+	if w2.Code != http.StatusTooManyRequests {
+		t.Fatalf("second call status = %d, want 429", w2.Code)
+	}
+}
+
+type instantRunner struct{}
+
+func (instantRunner) Run(ctx context.Context, prompt, model string) (ai.RunResult, error) {
+	return ai.RunResult{Result: `{"signal":"HOLD","confidence":0.5,"reasoning":"x","horizon_days":30,"key_factors":[]}`}, nil
 }
