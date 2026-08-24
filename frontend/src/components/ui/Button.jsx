@@ -1,8 +1,14 @@
+/**
+ * Controls are neutral. Green and red belong to the andon, so a button
+ * that is merely the main action must not borrow them — weight and
+ * contrast carry the hierarchy instead. `destructive` is the one
+ * exception: there the red is the warning, not the emphasis.
+ */
 const VARIANTS = {
-  primary: 'bg-gold-400 text-ink hover:bg-gold-100 disabled:hover:bg-gold-400',
-  secondary: 'border border-line-bright bg-ink-sunken text-chalk hover:border-gold-600 hover:text-gold-100',
+  primary: 'bg-chalk text-ink hover:bg-white disabled:hover:bg-chalk',
+  secondary: 'border border-line-bright bg-ink-sunken text-chalk hover:border-chalk/40 hover:bg-line/40',
   ghost: 'text-muted hover:bg-line/40 hover:text-chalk',
-  danger: 'text-muted hover:bg-oxide/10 hover:text-oxide',
+  danger: 'text-muted hover:bg-bad/10 hover:text-bad-bright',
 };
 
 const SIZES = {

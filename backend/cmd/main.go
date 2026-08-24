@@ -45,17 +45,18 @@ func main() {
 
 	r := gin.Default()
 
-	// CORS middleware
-	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		c.Next()
-	})
+	// Cross-origin access is off unless an origin is named. A wildcard
+	// would let any page a viewer visits issue writes against this API.
+	r.Use(api.CORS(os.Getenv("GOLD_ALLOWED_ORIGIN")))
+
+	// Everything except /api/health requires the shared token. The
+	// portfolio is personal data and the write endpoints can destroy it
+	// or spend subscription quota.
+	apiToken := api.TokenFromEnv()
+	if apiToken == "" {
+		log.Print("WARNING: GOLD_API_TOKEN is not set — the API is closed until it is")
+	}
+	r.Use(api.RequireToken(apiToken))
 
 	// Routes
 	apiGroup := r.Group("/api")

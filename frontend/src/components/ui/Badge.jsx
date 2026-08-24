@@ -1,16 +1,14 @@
+/**
+ * Status chip. The variants are the andon states, not a palette: pick
+ * the one that matches the condition, never the one that looks right.
+ */
 const VARIANTS = {
-  default: 'border-line-bright bg-ink-sunken text-muted',
-  gain: 'border-patina/30 bg-patina/10 text-patina',
-  loss: 'border-oxide/30 bg-oxide/10 text-oxide',
-  gold: 'border-gold-600/40 bg-gold-400/10 text-gold-400',
+  idle: 'andon-idle',
+  ok: 'andon-ok',
+  warn: 'andon-warn',
+  bad: 'andon-bad',
 };
 
-export function Badge({ variant = 'default', children }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded-chip border px-2 py-0.5 font-display text-[10px] font-semibold uppercase tracking-stamp ${VARIANTS[variant]}`}
-    >
-      {children}
-    </span>
-  );
+export function Badge({ variant = 'idle', children }) {
+  return <span className={`andon ${VARIANTS[variant] || VARIANTS.idle}`}>{children}</span>;
 }

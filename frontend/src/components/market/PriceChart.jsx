@@ -3,25 +3,31 @@ import {
 } from 'recharts';
 import { fmt, fmtDate } from '../../lib/format.js';
 
-const GOLD = '#E8B33A';
-const PATINA = '#6FA88A';
-const LINE = '#2A251C';
-const MUTED = '#8A8171';
+// The series itself is data, not a verdict, so it is drawn in neutral
+// white. Green and red on this chart mean one thing only: whether a
+// purchase is above or below the current spot.
+const SERIES = '#E8ECEF';
+const OK = '#16A34A';
+const BAD = '#DC2626';
+const LINE = '#232A31';
+const MUTED = '#8B949E';
 
 function ChartTooltip({ active, payload, label }) {
   if (!active || !payload?.length) return null;
   return (
     <div className="rounded-chip border border-line-bright bg-ink-sunken px-3 py-2">
       <p className="stamp">{fmtDate(label)}</p>
-      <p className="font-mono text-sm text-gold-400">{fmt(payload[0].value, 3)} BHD/g</p>
+      <p className="font-mono text-sm text-chalk">{fmt(payload[0].value, 3)} BHD/g</p>
     </div>
   );
 }
 
 /**
  * Spot price over time, with each purchase marked at the price paid.
- * Dots sitting below the line are entries currently in profit, which is
- * the question this chart exists to answer at a glance.
+ * A dot below the current spot is an entry in profit and is drawn
+ * green; one above it is underwater and drawn red. That is the question
+ * this chart exists to answer at a glance, so it is the only thing on
+ * it that carries colour.
  */
 export function PriceChart({ prices, purchases }) {
   const data = [...prices]
@@ -36,10 +42,14 @@ export function PriceChart({ prices, purchases }) {
     );
   }
 
+  const spot = Number(data[data.length - 1].price);
+
   // Only mark purchases that fall inside the plotted range; a dot at an
   // unplotted date would float against the axis.
   const plotted = new Set(data.map((d) => d.date));
-  const marks = purchases.filter((p) => plotted.has(p.date));
+  const marks = purchases
+    .filter((p) => plotted.has(p.date))
+    .map((p) => ({ ...p, up: Number(p.pricePerGram) <= spot }));
 
   return (
     <div className="h-72">
@@ -51,19 +61,25 @@ export function PriceChart({ prices, purchases }) {
           <YAxis stroke={MUTED} tick={{ fontSize: 10, fill: MUTED }} tickLine={false}
             axisLine={false} domain={['auto', 'auto']} width={52} />
           <Tooltip content={<ChartTooltip />} cursor={{ stroke: MUTED, strokeDasharray: '3 3' }} />
-          <Line type="monotone" dataKey="price" stroke={GOLD} strokeWidth={2} dot={false}
-            activeDot={{ r: 4, fill: GOLD }} isAnimationActive={false} />
+          <Line type="monotone" dataKey="price" stroke={SERIES} strokeWidth={2} dot={false}
+            activeDot={{ r: 4, fill: SERIES }} isAnimationActive={false} />
           {marks.map((m, i) => (
-            <ReferenceDot key={i} x={m.date} y={m.pricePerGram} r={4} fill={PATINA}
-              stroke="#12100C" strokeWidth={2} isFront />
+            <ReferenceDot key={i} x={m.date} y={m.pricePerGram} r={4} fill={m.up ? OK : BAD}
+              stroke="#0F1215" strokeWidth={2} isFront />
           ))}
         </LineChart>
       </ResponsiveContainer>
       {marks.length > 0 && (
-        <p className="pt-2 text-xs text-muted">
-          <span className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style={{ background: PATINA }} />
-          Your purchases, at the price paid per gram
-        </p>
+        <div className="flex flex-wrap gap-x-5 gap-y-1 pt-2 text-xs text-muted">
+          <span>
+            <span className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style={{ background: OK }} />
+            Purchase below spot
+          </span>
+          <span>
+            <span className="mr-1.5 inline-block h-2 w-2 rounded-full align-middle" style={{ background: BAD }} />
+            Purchase above spot
+          </span>
+        </div>
       )}
     </div>
   );
