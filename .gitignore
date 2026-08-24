@@ -42,3 +42,7 @@ yarn-error.log*
 
 # Project specific
 old_backend/
+
+# Compiled backend binary
+backend/gold-tracker-api
+backend/main

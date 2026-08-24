@@ -4,17 +4,48 @@
 
 @layer base {
   body {
-    @apply bg-gray-950 text-gray-100;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    @apply bg-ink text-chalk font-sans antialiased;
+  }
+
+  /* Every figure in this app is money or mass, and columns of them
+     have to line up. Tabular figures are the default, not an opt-in. */
+  .font-mono,
+  table {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Amount fields read as figures, and the spinners crowd them. */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-gold-400/70 ring-offset-2 ring-offset-ink;
+  }
+
+  ::selection {
+    @apply bg-gold-400/30;
   }
 }
 
-/* Hide number input spinners for a cleaner look on amount fields */
-input[type='number']::-webkit-outer-spin-button,
-input[type='number']::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+@layer components {
+  /* The eyebrow labels throughout: small, spaced, stamped. */
+  .stamp {
+    @apply font-display text-[10px] font-semibold uppercase tracking-stamp text-muted;
+  }
 }
-input[type='number'] {
-  -moz-appearance: textfield;
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

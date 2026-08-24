@@ -23,6 +23,14 @@ services:
       - DB_NAME=gold_tracker
       - DB_USER=gold_admin
       - DB_PASSWORD=gold_pass
+      - AI_ENABLED=${AI_ENABLED:-false}
+      - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
+      - AI_MODEL=${AI_MODEL:-claude-opus-5}
+      - AI_TIMEOUT_SECONDS=${AI_TIMEOUT_SECONDS:-180}
+      - AI_AUTO_MIN_HOURS=${AI_AUTO_MIN_HOURS:-24}
+    volumes:
+      # Persist the CLI's credential cache across restarts.
+      - gold_claude_config:/app/.claude
     depends_on:
       - db
     networks:
@@ -45,3 +53,4 @@ networks:
 
 volumes:
   gold_db_data:
+  gold_claude_config:

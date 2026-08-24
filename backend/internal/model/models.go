@@ -36,6 +36,8 @@ type SignalLog struct {
 	Reasoning     *string   `json:"reasoning"`
 	PriceAtSignal *float64  `json:"price_at_signal"`
 	SentToDiscord bool      `json:"sent_to_discord"`
+	Model         *string   `json:"model"`
+	Source        string    `json:"source"`
 }
 
 type PortfolioItem struct {
