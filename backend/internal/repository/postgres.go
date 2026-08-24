@@ -39,6 +39,15 @@ func NewPostgresRepository() (*PostgresRepository, error) {
 		return nil, fmt.Errorf("unable to connect to database: %v", err)
 	}
 
+	// Bring existing installs up to date. Both statements are
+	// idempotent, so this is safe to run on every boot.
+	if _, err := pool.Exec(context.Background(), `
+		ALTER TABLE signals_log ADD COLUMN IF NOT EXISTS model TEXT;
+		ALTER TABLE signals_log ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
+	`); err != nil {
+		return nil, fmt.Errorf("unable to apply signals_log migration: %v", err)
+	}
+
 	return &PostgresRepository{Pool: pool}, nil
 }
 

@@ -71,7 +71,9 @@ CREATE TABLE IF NOT EXISTS signals_log (
     signal_type TEXT NOT NULL,
     reasoning TEXT,
     price_at_signal NUMERIC,
-    sent_to_discord BOOLEAN DEFAULT false
+    sent_to_discord BOOLEAN DEFAULT false,
+    model TEXT,
+    source TEXT NOT NULL DEFAULT 'manual'
 );
 
 CREATE TABLE IF NOT EXISTS portfolio_snapshots (
