@@ -1,20 +1,23 @@
 package api
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 
-	"github.com/gin-gonic/gin"
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/ai"
 	"github.com/TheInfamousToTo/gold-tracker/backend/internal/model"
 	"github.com/TheInfamousToTo/gold-tracker/backend/internal/repository"
+	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
 	Repo *repository.PostgresRepository
+	AI   *ai.Service
 }
 
-func NewHandler(repo *repository.PostgresRepository) *Handler {
-	return &Handler{Repo: repo}
+func NewHandler(repo *repository.PostgresRepository, aiService *ai.Service) *Handler {
+	return &Handler{Repo: repo, AI: aiService}
 }
 
 // Health check
@@ -135,6 +138,10 @@ func (h *Handler) CreatePrice(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, newPrice)
+
+	// Fire and forget: a fresh price may make a new signal due, but
+	// this write is n8n's, and AI trouble must never fail it.
+	go h.AI.MaybeAutoGenerate(context.Background())
 }
 
 // Signals
@@ -151,4 +158,24 @@ func (h *Handler) GetSignals(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, signals)
+}
+
+// GenerateSignal starts a run and returns immediately. Generation can
+// take minutes, which is far too long to hold an HTTP connection open
+// through nginx, so the client polls SignalStatus instead.
+func (h *Handler) GenerateSignal(c *gin.Context) {
+	if !h.AI.Enabled() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI is not configured"})
+		return
+	}
+	if !h.AI.TryStart("manual") {
+		c.JSON(http.StatusConflict, gin.H{"error": "a signal generation is already running"})
+		return
+	}
+	go h.AI.RunOnce(context.Background(), "manual")
+	c.JSON(http.StatusAccepted, gin.H{"status": "started"})
+}
+
+func (h *Handler) SignalStatus(c *gin.Context) {
+	c.JSON(http.StatusOK, h.AI.GetStatus())
 }

@@ -22,11 +22,14 @@ type Config struct {
 // LoadConfigFromEnv reads the AI_* settings. Every value is optional so
 // the application boots normally with the feature switched off.
 //
-// Both AI_ENABLED and a token are required: the flag alone would leave
-// the CLI unable to authenticate inside a container, which would turn
-// every generation attempt into a failure the owner has to diagnose.
+// AI_ENABLED alone is the gate. The CLI resolves its own credentials —
+// from CLAUDE_CODE_OAUTH_TOKEN, or from an existing logged-in session
+// on the host — so the backend does not check for a token. In a
+// container there is no session, which is why the token is required
+// there; setting it to a placeholder is worse than leaving it unset,
+// because it overrides working session auth and produces a 401.
 func LoadConfigFromEnv() Config {
-	enabled := os.Getenv("AI_ENABLED") == "true" && os.Getenv("CLAUDE_CODE_OAUTH_TOKEN") != ""
+	enabled := os.Getenv("AI_ENABLED") == "true"
 
 	model := os.Getenv("AI_MODEL")
 	if model == "" {

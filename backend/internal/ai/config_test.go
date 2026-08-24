@@ -55,18 +55,20 @@ func TestLoadConfigFromEnvExplicit(t *testing.T) {
 	}
 }
 
-// AI_ENABLED alone is not enough — without a token the CLI cannot
-// authenticate inside a container, so the feature stays off.
-func TestLoadConfigEnabledRequiresBothFlagAndToken(t *testing.T) {
+// AI_ENABLED is the only gate. The CLI resolves credentials itself,
+// either from the token or from a logged-in session on the host, so
+// requiring the token here would wrongly disable the feature on a
+// developer machine that is already authenticated.
+func TestLoadConfigEnabledGatesOnFlagAlone(t *testing.T) {
 	clearAIEnv(t)
 	t.Setenv("AI_ENABLED", "true")
 
-	if LoadConfigFromEnv().Enabled {
-		t.Error("Enabled = true with no token, want false")
+	if !LoadConfigFromEnv().Enabled {
+		t.Error("Enabled = false with AI_ENABLED=true and no token, want true")
 	}
 
 	clearAIEnv(t)
-	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "fake-token")
+	t.Setenv("CLAUDE_CODE_OAUTH_TOKEN", "a-token")
 
 	if LoadConfigFromEnv().Enabled {
 		t.Error("Enabled = true with AI_ENABLED unset, want false")
