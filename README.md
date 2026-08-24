@@ -53,6 +53,41 @@ The entire stack is containerized for easy deployment:
 docker compose up -d --build
 ```
 
+## 🔐 API Access
+
+Every route except `/api/health` requires a shared bearer token. With `GOLD_API_TOKEN` unset the
+API refuses **all** requests rather than falling open, so a misconfigured deploy fails loudly
+instead of quietly serving your portfolio to the internet.
+
+```bash
+# Generate a token and put it in .env
+openssl rand -base64 32
+```
+
+```
+GOLD_API_TOKEN=<the generated value>
+```
+
+The UI container reads the same variable. nginx attaches the credential to the requests it
+proxies, so the token is never shipped to the browser.
+
+> Reaching the UI is therefore equivalent to holding the token. Put the UI behind whatever
+> authentication fronts your other services before exposing it.
+
+`GOLD_ALLOWED_ORIGIN` is only needed when something other than the bundled UI calls the API from
+a browser. Left unset, no CORS header is sent and only same-origin requests work.
+
+## 🎨 Interface Conventions
+
+The UI follows shop-floor visual management: **colour is reserved for status.** Green is normal,
+amber wants attention, red is abnormal, and everything else — figures, controls, navigation,
+purity marks — is neutral.
+
+A gain, a loss, a failed request, a stale price: these carry colour, an accompanying word or
+glyph, and often a coloured edge on their container. Amounts, buttons and tabs deliberately do
+not. If every element is coloured, colour stops carrying information, so please keep new work
+inside that rule rather than reintroducing a decorative accent.
+
 ## 🧠 AI Recommendations
 
 The API can analyse your price history and holdings and record a **buy**, **sell**, or **hold**

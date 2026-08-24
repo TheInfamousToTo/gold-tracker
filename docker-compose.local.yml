@@ -12,6 +12,8 @@ services:
       - DB_NAME=gold_tracker
       - DB_USER=gold_admin
       - DB_PASSWORD=${GOLD_DB_PASS}
+      - GOLD_API_TOKEN=${GOLD_API_TOKEN:?set GOLD_API_TOKEN in .env — the API is closed without it}
+      - GOLD_ALLOWED_ORIGIN=${GOLD_ALLOWED_ORIGIN:-}
       - AI_ENABLED=${AI_ENABLED:-false}
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
       - AI_MODEL=${AI_MODEL:-claude-opus-5}
@@ -30,6 +32,8 @@ services:
       dockerfile: Dockerfile
     container_name: gold-tracker-ui
     restart: unless-stopped
+    environment:
+      - GOLD_API_TOKEN=${GOLD_API_TOKEN:?set GOLD_API_TOKEN in .env — the UI cannot reach the API without it}
     ports:
       - "3960:80"
 
