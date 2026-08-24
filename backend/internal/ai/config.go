@@ -7,9 +7,10 @@ import (
 )
 
 const (
-	defaultModel        = "claude-opus-5"
-	defaultTimeout      = 180 * time.Second
-	defaultAutoMinHours = 24.0
+	defaultModel          = "claude-opus-5"
+	defaultTimeout        = 180 * time.Second
+	defaultAutoMinHours   = 24.0
+	defaultManualCooldown = 60 * time.Second
 )
 
 type Config struct {
@@ -17,6 +18,12 @@ type Config struct {
 	Model        string
 	Timeout      time.Duration
 	AutoMinHours float64
+
+	// ManualCooldown is the minimum gap between on-demand generations.
+	// The API has no authentication, so anything that can reach it can
+	// spend subscription quota that is shared with the owner's own
+	// interactive Claude Code use.
+	ManualCooldown time.Duration
 }
 
 // LoadConfigFromEnv reads the AI_* settings. Every value is optional so
@@ -50,10 +57,18 @@ func LoadConfigFromEnv() Config {
 		}
 	}
 
+	manualCooldown := defaultManualCooldown
+	if v := os.Getenv("AI_MANUAL_COOLDOWN_SECONDS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			manualCooldown = time.Duration(n) * time.Second
+		}
+	}
+
 	return Config{
-		Enabled:      enabled,
-		Model:        model,
-		Timeout:      timeout,
-		AutoMinHours: autoMinHours,
+		Enabled:        enabled,
+		Model:          model,
+		Timeout:        timeout,
+		AutoMinHours:   autoMinHours,
+		ManualCooldown: manualCooldown,
 	}
 }
