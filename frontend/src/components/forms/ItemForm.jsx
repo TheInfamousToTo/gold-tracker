@@ -117,7 +117,12 @@ export function ItemForm({ editingItem, onSaved, onCancelEdit }) {
             value={form.notes} onChange={set('notes')} className={`${inputClass} resize-none`} />
         </Field>
 
-        {error && <p className="text-sm text-oxide">{error}</p>}
+        {error && (
+          <p className="flex items-center gap-2 rounded-chip border border-bad/30 border-l-4 border-l-bad bg-bad/10 px-3 py-2 text-sm text-bad-bright">
+            <span className="andon andon-bad">Error</span>
+            {error}
+          </p>
+        )}
 
         <Button type="submit" size="lg" loading={submitting}
           loadingLabel={editingItem ? 'Saving' : 'Adding'}>

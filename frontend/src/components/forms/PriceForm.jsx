@@ -51,7 +51,12 @@ export function PriceForm({ onSaved }) {
             placeholder="0.000" value={form.price_per_gram_24k}
             onChange={set('price_per_gram_24k')} className={`${inputClass} font-mono`} />
         </Field>
-        {error && <p className="text-sm text-oxide">{error}</p>}
+        {error && (
+          <p className="flex items-center gap-2 rounded-chip border border-bad/30 border-l-4 border-l-bad bg-bad/10 px-3 py-2 text-sm text-bad-bright">
+            <span className="andon andon-bad">Error</span>
+            {error}
+          </p>
+        )}
         <Button type="submit" variant="secondary" size="lg" loading={submitting} loadingLabel="Saving">
           Save price
         </Button>

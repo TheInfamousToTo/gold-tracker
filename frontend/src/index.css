@@ -24,12 +24,13 @@
     -moz-appearance: textfield;
   }
 
+  /* Focus is a neutral affordance, not a status, so it is white. */
   :focus-visible {
-    @apply outline-none ring-2 ring-gold-400/70 ring-offset-2 ring-offset-ink;
+    @apply outline-none ring-2 ring-chalk/70 ring-offset-2 ring-offset-ink;
   }
 
   ::selection {
-    @apply bg-gold-400/30;
+    @apply bg-chalk/20;
   }
 }
 
@@ -37,6 +38,24 @@
   /* The eyebrow labels throughout: small, spaced, stamped. */
   .stamp {
     @apply font-display text-[10px] font-semibold uppercase tracking-stamp text-muted;
+  }
+
+  /* Andon chip. Status is stated in words as well as colour, so the
+     board still reads under colour-blindness or a bad screen. */
+  .andon {
+    @apply inline-flex items-center gap-1.5 rounded-chip border px-2 py-0.5 font-display text-[10px] font-semibold uppercase tracking-stamp;
+  }
+  .andon-ok {
+    @apply border-ok/40 bg-ok/10 text-ok-bright;
+  }
+  .andon-warn {
+    @apply border-warn/40 bg-warn/10 text-warn-bright;
+  }
+  .andon-bad {
+    @apply border-bad/40 bg-bad/10 text-bad-bright;
+  }
+  .andon-idle {
+    @apply border-line-bright bg-ink-sunken text-muted;
   }
 }
 

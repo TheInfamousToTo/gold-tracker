@@ -54,6 +54,7 @@ export default function App() {
 
   const items = portfolio.items || [];
   const spotPrice = prices[0]?.price_per_gram_24k;
+  const spotDate = prices[0]?.price_date;
   const purchaseMarks = items.map((item) => ({
     date: item.purchase_date,
     pricePerGram: item.price_per_gram_paid,
@@ -64,6 +65,7 @@ export default function App() {
       activeTab={activeTab}
       onTabChange={setActiveTab}
       spotPrice={spotPrice}
+      spotDate={spotDate}
       error={error}
       onReconnect={refreshData}
     >

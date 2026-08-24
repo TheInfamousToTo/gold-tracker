@@ -4,6 +4,7 @@ export const TABS = [
   { id: 'market', label: 'Market' },
 ];
 
+/** Navigation is neutral: where you are is not a good or bad condition. */
 export function NavTabs({ activeTab, onChange }) {
   return (
     <nav className="flex gap-1" aria-label="Sections">
@@ -15,7 +16,7 @@ export function NavTabs({ activeTab, onChange }) {
             onClick={() => onChange(tab.id)}
             aria-current={active ? 'page' : undefined}
             className={`rounded-chip px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-stamp transition-colors ${
-              active ? 'bg-gold-400 text-ink' : 'text-muted hover:bg-line/40 hover:text-chalk'
+              active ? 'bg-chalk text-ink' : 'text-muted hover:bg-line/40 hover:text-chalk'
             }`}
           >
             {tab.label}

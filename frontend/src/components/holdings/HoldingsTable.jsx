@@ -36,7 +36,11 @@ export function HoldingsTable({ items, loading, onEdit, onDelete, onAddFirst }) 
                   <th
                     key={i}
                     scope="col"
-                    className={`stamp px-5 pb-2 pt-4 ${col.align === 'right' ? 'text-right' : 'text-left'}`}
+                    /* The first heading carries the row's status stripe as a
+                       transparent border so it lines up with the cells. */
+                    className={`stamp px-5 pb-2 pt-4 ${i === 0 ? 'border-l-4 border-l-transparent' : ''} ${
+                      col.align === 'right' ? 'text-right' : 'text-left'
+                    }`}
                   >
                     {col.label}
                   </th>

@@ -20,3 +20,18 @@ export function fmtDate(value) {
     day: 'numeric',
   });
 }
+
+/**
+ * Whole days between a date and today, or null when there is no date.
+ * Used to decide whether the price board is showing live data or a
+ * stale figure — a number nobody has refreshed is the failure mode this
+ * app is most likely to hide.
+ */
+export function daysSince(value) {
+  if (!value) return null;
+  const then = new Date(value);
+  if (Number.isNaN(then.getTime())) return null;
+  const dayMs = 24 * 60 * 60 * 1000;
+  const midnight = (d) => Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+  return Math.max(0, Math.round((midnight(new Date()) - midnight(then)) / dayMs));
+}

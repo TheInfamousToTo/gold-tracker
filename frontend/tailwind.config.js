@@ -4,29 +4,40 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Warm, slightly brown darks — patinated metal rather than
-        // neutral black, so gold sits in the same world as its ground.
+        // Neutral, low-chroma ground. Visual management only works if the
+        // background is silent: any colour on the page has to read as a
+        // signal, and it cannot do that against a coloured surface.
         ink: {
-          DEFAULT: '#12100C',
-          raised: '#1A1712',
-          sunken: '#0C0A07',
+          DEFAULT: '#0F1215',
+          raised: '#161A1F',
+          sunken: '#0A0C0F',
         },
         line: {
-          DEFAULT: '#2A251C',
-          bright: '#3A3326',
+          DEFAULT: '#232A31',
+          bright: '#333C45',
         },
-        gold: {
-          100: '#F0DFAE', // champagne, for figures that carry weight
-          400: '#E8B33A',
-          500: '#D19A22',
-          600: '#A87715',
+        chalk: '#E8ECEF',
+        muted: '#8B949E',
+
+        // Andon colours. These three are reserved: they mean normal,
+        // watch, and abnormal, and they are never used for decoration.
+        // `DEFAULT` fills and borders, `bright` carries text on dark.
+        ok: {
+          DEFAULT: '#16A34A',
+          bright: '#4ADE80',
         },
-        // Verdigris and oxide: what metal actually does over time, and
-        // quieter than stock emerald/red against a warm ground.
-        patina: '#6FA88A',
-        oxide: '#C4635A',
-        chalk: '#EDE7DA',
-        muted: '#8A8171',
+        warn: {
+          DEFAULT: '#D97706',
+          bright: '#FBBF24',
+        },
+        bad: {
+          DEFAULT: '#DC2626',
+          bright: '#F87171',
+        },
+
+        // Identity only — the masthead mark. Never a figure, never a
+        // status, never a control, or it starts competing with the andon.
+        brand: '#D9A93B',
       },
       fontFamily: {
         display: ['Archivo', 'Arial Narrow', 'system-ui', 'sans-serif'],

@@ -11,7 +11,7 @@ export function PriceHistoryList({ prices }) {
           {prices.map((p) => (
             <li key={p.id} className="flex items-center justify-between px-5 py-2.5">
               <span className="text-xs text-muted">{fmtDate(p.price_date)}</span>
-              <span className="font-mono text-sm text-gold-100">{fmt(p.price_per_gram_24k, 3)}</span>
+              <span className="font-mono text-sm text-chalk">{fmt(p.price_per_gram_24k, 3)}</span>
             </li>
           ))}
         </ul>
