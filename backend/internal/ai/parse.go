@@ -15,7 +15,15 @@ type Verdict struct {
 	KeyFactors  []string `json:"key_factors"`
 }
 
-const maxReasoningLen = 2000
+// maxReasoningLen is what the UI can show without the card turning
+// into an essay. The prompt asks for 320 characters; anything longer is
+// trimmed at a sentence boundary rather than rejected, since a rerun
+// costs twenty seconds and a slice of shared subscription quota.
+const maxReasoningLen = 420
+
+// absurdReasoningLen is the point at which the response is treated as
+// broken rather than merely verbose.
+const absurdReasoningLen = 8000
 
 var validSignals = map[string]bool{"BUY": true, "SELL": true, "HOLD": true}
 
@@ -46,11 +54,54 @@ func ParseVerdict(raw string) (Verdict, error) {
 	if strings.TrimSpace(v.Reasoning) == "" {
 		return Verdict{}, fmt.Errorf("reasoning is empty")
 	}
-	if len(v.Reasoning) > maxReasoningLen {
-		return Verdict{}, fmt.Errorf("reasoning is %d chars, over the %d char limit", len(v.Reasoning), maxReasoningLen)
+	if len(v.Reasoning) > absurdReasoningLen {
+		return Verdict{}, fmt.Errorf("reasoning is %d chars, over the %d char limit", len(v.Reasoning), absurdReasoningLen)
 	}
+	v.Reasoning = trimToLength(v.Reasoning, maxReasoningLen)
+	v.KeyFactors = trimFactors(v.KeyFactors)
 
 	return v, nil
+}
+
+// trimToLength shortens s to at most limit characters, preferring to
+// end on the last complete sentence so the reasoning still reads as
+// finished rather than cut off mid-clause.
+func trimToLength(s string, limit int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= limit {
+		return s
+	}
+	// Byte slicing can land mid-rune, and the reasoning routinely
+	// contains em dashes; drop any partial rune the cut created.
+	cut := strings.ToValidUTF8(s[:limit], "")
+	if i := strings.LastIndexAny(cut, ".!?"); i > limit/2 {
+		return strings.TrimSpace(cut[:i+1])
+	}
+	if i := strings.LastIndexByte(cut, ' '); i > limit/2 {
+		return strings.TrimSpace(cut[:i]) + "…"
+	}
+	return strings.TrimSpace(cut) + "…"
+}
+
+// trimFactors caps the supporting points at three, each short enough to
+// sit on one line.
+func trimFactors(factors []string) []string {
+	const (
+		maxFactors   = 3
+		maxFactorLen = 80
+	)
+	if len(factors) > maxFactors {
+		factors = factors[:maxFactors]
+	}
+	out := make([]string, 0, len(factors))
+	for _, f := range factors {
+		f = strings.TrimSpace(f)
+		if f == "" {
+			continue
+		}
+		out = append(out, trimToLength(f, maxFactorLen))
+	}
+	return out
 }
 
 // extractFirstJSONObject finds the first balanced {...} substring in s,
