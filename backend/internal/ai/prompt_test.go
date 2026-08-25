@@ -46,8 +46,8 @@ func TestBuildPromptHedgesOnSparseData(t *testing.T) {
 	prompt := BuildPrompt(PromptInput{
 		Prices: []PriceHistoryPoint{{Date: "2026-08-01", PricePerGram24k: 45}},
 	})
-	if !strings.Contains(strings.ToLower(prompt), "hedge") {
-		t.Fatalf("prompt should tell the model to hedge on sparse data:\n%s", prompt)
+	if !strings.Contains(prompt, sparseWarning) {
+		t.Fatalf("prompt should carry the sparse-data warning:\n%s", prompt)
 	}
 }
 
@@ -57,7 +57,7 @@ func TestBuildPromptDoesNotHedgeOnDenseData(t *testing.T) {
 		prices = append(prices, PriceHistoryPoint{Date: "2026-08-01", PricePerGram24k: 45})
 	}
 	prompt := BuildPrompt(PromptInput{Prices: prices})
-	if strings.Contains(strings.ToLower(prompt), "hedge") {
+	if strings.Contains(prompt, sparseWarning) {
 		t.Fatalf("prompt should not carry the sparse-data warning with 30 observations:\n%s", prompt)
 	}
 }
