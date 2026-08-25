@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/argon2"
 )
 
 const (
@@ -77,11 +78,7 @@ func LoadCredentialsFrom(env map[string]string) Credentials {
 	if secret := get("GOLD_SESSION_SECRET"); secret != "" {
 		c.SessionSecret = []byte(secret)
 	} else if c.Password != "" {
-		// Deriving from the password means a password change invalidates
-		// every outstanding session, which is the behaviour people
-		// expect from changing a password.
-		sum := sha256.Sum256([]byte("gold-tracker-session\x00" + c.Password))
-		c.SessionSecret = sum[:]
+		c.SessionSecret = deriveSessionSecret(c.Password)
 	}
 
 	return c
@@ -91,6 +88,31 @@ func LoadCredentialsFrom(env map[string]string) Credentials {
 // Without them nobody can obtain a session.
 func (c Credentials) LoginConfigured() bool {
 	return c.Username != "" && c.Password != ""
+}
+
+// deriveSessionSecret turns the password into a signing key when no
+// explicit GOLD_SESSION_SECRET is given. Deriving it from the password
+// means a password change invalidates every outstanding session, which
+// is what people expect changing a password to do.
+//
+// Argon2id rather than a plain hash: the derived key signs sessions, so
+// anything that leaked it would otherwise let an attacker recover the
+// password by brute force at the speed of SHA-256. This runs once at
+// startup, so a deliberately slow function costs nothing.
+//
+// The salt is fixed because the derivation has to be reproducible
+// across restarts without storing anything. That forfeits the
+// protection a random salt gives against precomputation, which is the
+// reason to prefer setting GOLD_SESSION_SECRET explicitly.
+func deriveSessionSecret(password string) []byte {
+	const (
+		timeCost    = 1
+		memoryKiB   = 64 * 1024
+		parallelism = 4
+		keyLen      = 32
+	)
+	salt := []byte("gold-tracker/session-secret/v1")
+	return argon2.IDKey([]byte(password), salt, timeCost, memoryKiB, parallelism, keyLen)
 }
 
 // Authenticator issues and checks sessions, and throttles failed logins.
@@ -103,7 +125,7 @@ type Authenticator struct {
 
 type failureRecord struct {
 	count int
-	until  time.Time
+	until time.Time
 }
 
 func NewAuthenticator(creds Credentials) *Authenticator {
@@ -279,8 +301,8 @@ func (a *Authenticator) RequireAuth() gin.HandlerFunc {
 func (a *Authenticator) Session(c *gin.Context) {
 	supplied, ok := bearerToken(c.GetHeader("Authorization"))
 	c.JSON(http.StatusOK, gin.H{
-		"authenticated":     ok && a.validSession(supplied, time.Now()),
-		"login_configured":  a.creds.LoginConfigured(),
+		"authenticated":    ok && a.validSession(supplied, time.Now()),
+		"login_configured": a.creds.LoginConfigured(),
 	})
 }
 

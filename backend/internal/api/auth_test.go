@@ -1,6 +1,7 @@
 package api
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -278,5 +279,36 @@ func TestCORSEchoesConfiguredOriginOnly(t *testing.T) {
 	got := req(r, http.MethodGet, "/x", "", "").Header().Get("Access-Control-Allow-Origin")
 	if got != "https://gold.example" {
 		t.Fatalf("Access-Control-Allow-Origin = %q, want the configured origin", got)
+	}
+}
+
+// CodeQL flagged deriving the signing key with a bare SHA-256 over the
+// password: cheap to reverse, so a leaked key would give up the
+// password. The derivation must be a slow KDF.
+func TestSessionSecretDerivationIsSlowAndStable(t *testing.T) {
+	first := deriveSessionSecret("correct horse")
+	second := deriveSessionSecret("correct horse")
+
+	if len(first) != 32 {
+		t.Fatalf("derived key is %d bytes, want 32", len(first))
+	}
+	if string(first) != string(second) {
+		t.Fatal("derivation must be reproducible, or sessions break on restart")
+	}
+	if string(first) == string(deriveSessionSecret("correct horse ")) {
+		t.Fatal("a different password produced the same key")
+	}
+
+	// A bare SHA-256 of the password would be indistinguishable from a
+	// precomputed hash; the KDF must not produce one.
+	sum := sha256.Sum256([]byte("correct horse"))
+	if string(first) == string(sum[:]) {
+		t.Fatal("derived key is a plain SHA-256 of the password")
+	}
+
+	start := time.Now()
+	deriveSessionSecret("timing check")
+	if elapsed := time.Since(start); elapsed < time.Millisecond {
+		t.Errorf("derivation took %v, too fast to resist brute force", elapsed)
 	}
 }
