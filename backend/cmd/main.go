@@ -49,14 +49,16 @@ func main() {
 	// would let any page a viewer visits issue writes against this API.
 	r.Use(api.CORS(os.Getenv("GOLD_ALLOWED_ORIGIN")))
 
-	// Everything except /api/health requires the shared token. The
-	// portfolio is personal data and the write endpoints can destroy it
-	// or spend subscription quota.
-	apiToken := api.TokenFromEnv()
-	if apiToken == "" {
-		log.Print("WARNING: GOLD_API_TOKEN is not set — the API is closed until it is")
+	// Everything except /api/health and /api/login requires a session
+	// from the login form, or the machine token the price feed uses.
+	creds := api.LoadCredentials()
+	auth := api.NewAuthenticator(creds)
+	if !creds.LoginConfigured() {
+		log.Print("WARNING: GOLD_AUTH_USERNAME and GOLD_AUTH_PASSWORD are not set — nobody can sign in")
 	}
-	r.Use(api.RequireToken(apiToken))
+	r.POST("/api/login", auth.Login)
+	r.GET("/api/session", auth.Session)
+	r.Use(auth.RequireAuth())
 
 	// Routes
 	apiGroup := r.Group("/api")

@@ -25,7 +25,11 @@ services:
       - DB_PASSWORD=gold_pass
       # Required. The API refuses every request until this is set, rather
       # than falling open on a misconfigured deploy.
-      - GOLD_API_TOKEN=${GOLD_API_TOKEN:?set GOLD_API_TOKEN in .env — the API is closed without it}
+      - GOLD_AUTH_USERNAME=${GOLD_AUTH_USERNAME:?set GOLD_AUTH_USERNAME in .env — nobody can sign in without it}
+      - GOLD_AUTH_PASSWORD=${GOLD_AUTH_PASSWORD:?set GOLD_AUTH_PASSWORD in .env — nobody can sign in without it}
+      - GOLD_SESSION_TTL_HOURS=${GOLD_SESSION_TTL_HOURS:-168}
+      - GOLD_SESSION_SECRET=${GOLD_SESSION_SECRET:-}
+      - GOLD_API_TOKEN=${GOLD_API_TOKEN:-}
       # Only needed if something other than the bundled UI calls the API
       # from a browser. Same-origin requests need no CORS header at all.
       - GOLD_ALLOWED_ORIGIN=${GOLD_ALLOWED_ORIGIN:-}
@@ -46,11 +50,6 @@ services:
     image: ghcr.io/theinfamoustoto/gold-tracker-ui:latest
     container_name: gold-tracker-ui
     restart: unless-stopped
-    environment:
-      # nginx attaches this to every proxied /api/ request, so the token
-      # never reaches the browser. Reaching this port therefore grants
-      # the same access the token does — keep it behind your own auth.
-      - GOLD_API_TOKEN=${GOLD_API_TOKEN:?set GOLD_API_TOKEN in .env — the UI cannot reach the API without it}
     ports:
       - "3960:80"
     depends_on:

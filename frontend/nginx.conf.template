@@ -20,13 +20,11 @@ server {
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
 
-        # The API requires a bearer token on every route but /api/health.
-        # It is attached here rather than in the app bundle: a secret
-        # shipped to the browser is a secret given to anyone who opens
-        # the page. The consequence is that reaching this port is the
-        # same as holding the token, so keep the UI behind whatever
-        # authentication fronts it.
-        proxy_set_header Authorization "Bearer ${GOLD_API_TOKEN}";
+        # The Authorization header is NOT injected here. Doing so made
+        # reaching this port equivalent to holding the token, which left
+        # the site open to anyone who loaded it. The browser now sends a
+        # session token earned at /api/login instead.
+        proxy_set_header Authorization $http_authorization;
     }
 
     error_page 500 502 503 504 /50x.html;

@@ -12,7 +12,11 @@ services:
       - DB_NAME=gold_tracker
       - DB_USER=gold_admin
       - DB_PASSWORD=${GOLD_DB_PASS}
-      - GOLD_API_TOKEN=${GOLD_API_TOKEN:?set GOLD_API_TOKEN in .env — the API is closed without it}
+      - GOLD_AUTH_USERNAME=${GOLD_AUTH_USERNAME:?set GOLD_AUTH_USERNAME in .env — nobody can sign in without it}
+      - GOLD_AUTH_PASSWORD=${GOLD_AUTH_PASSWORD:?set GOLD_AUTH_PASSWORD in .env — nobody can sign in without it}
+      - GOLD_SESSION_TTL_HOURS=${GOLD_SESSION_TTL_HOURS:-168}
+      - GOLD_SESSION_SECRET=${GOLD_SESSION_SECRET:-}
+      - GOLD_API_TOKEN=${GOLD_API_TOKEN:-}
       - GOLD_ALLOWED_ORIGIN=${GOLD_ALLOWED_ORIGIN:-}
       - AI_ENABLED=${AI_ENABLED:-false}
       - CLAUDE_CODE_OAUTH_TOKEN=${CLAUDE_CODE_OAUTH_TOKEN:-}
@@ -33,7 +37,6 @@ services:
     container_name: gold-tracker-ui
     restart: unless-stopped
     environment:
-      - GOLD_API_TOKEN=${GOLD_API_TOKEN:?set GOLD_API_TOKEN in .env — the UI cannot reach the API without it}
     ports:
       - "3960:80"
 
