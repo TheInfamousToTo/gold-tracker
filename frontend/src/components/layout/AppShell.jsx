@@ -14,7 +14,7 @@ const STALE_AFTER_DAYS = 2;
  * never good or bad. What does get a colour is whether the board can be
  * trusted: fresh, stale, or missing.
  */
-export function AppShell({ activeTab, onTabChange, spotPrice, spotDate, error, onReconnect, children }) {
+export function AppShell({ activeTab, onTabChange, spotPrice, spotDate, error, onReconnect, onSignOut, children }) {
   const age = daysSince(spotDate);
   const feed =
     spotPrice == null || age == null
@@ -48,8 +48,16 @@ export function AppShell({ activeTab, onTabChange, spotPrice, spotDate, error, o
             </span>
           </div>
 
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             <NavTabs activeTab={activeTab} onChange={onTabChange} />
+            {onSignOut && (
+              <button
+                onClick={onSignOut}
+                className="rounded-chip px-3 py-2 font-display text-[11px] font-semibold uppercase tracking-stamp text-muted transition-colors hover:bg-line/40 hover:text-chalk"
+              >
+                Sign out
+              </button>
+            )}
           </div>
         </div>
       </header>

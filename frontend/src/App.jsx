@@ -1,5 +1,7 @@
 import { useState, useCallback } from 'react';
 import { apiRequest } from './api/client.js';
+import { useAuth } from './auth/useAuth.js';
+import { LoginPage } from './auth/LoginPage.jsx';
 import { useGoldData } from './hooks/useGoldData.js';
 import { useSignalRun } from './hooks/useSignalRun.js';
 import { AppShell } from './components/layout/AppShell.jsx';
@@ -13,7 +15,7 @@ import { SignalPanel } from './components/signals/SignalPanel.jsx';
 import { Card } from './components/ui/Card.jsx';
 import { Toast } from './components/ui/Toast.jsx';
 
-export default function App() {
+function Dashboard({ onSignOut }) {
   const [activeTab, setActiveTab] = useState('holdings');
   const [editingItem, setEditingItem] = useState(null);
   const [toast, setToast] = useState(null);
@@ -68,6 +70,7 @@ export default function App() {
       spotDate={spotDate}
       error={error}
       onReconnect={refreshData}
+      onSignOut={onSignOut}
     >
       {activeTab === 'holdings' && (
         <div className="space-y-6">
@@ -116,4 +119,23 @@ export default function App() {
       <Toast message={toast?.message} kind={toast?.kind} onDismiss={() => setToast(null)} />
     </AppShell>
   );
+}
+
+/**
+ * Nothing about the portfolio renders until the viewer has a session.
+ * The dashboard is mounted only when authenticated, so its data hooks
+ * never fire requests that would come back 401.
+ */
+export default function App() {
+  const { checking, authenticated, loginConfigured, signIn, signOut } = useAuth();
+
+  if (checking) {
+    return <div className="min-h-screen bg-ink" aria-busy="true" />;
+  }
+
+  if (!authenticated) {
+    return <LoginPage onSignIn={signIn} loginConfigured={loginConfigured} />;
+  }
+
+  return <Dashboard onSignOut={signOut} />;
 }
