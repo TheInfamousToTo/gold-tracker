@@ -83,10 +83,37 @@ func TestParseVerdictRejectsEmptyReasoning(t *testing.T) {
 	}
 }
 
-func TestParseVerdictRejectsOverlongReasoning(t *testing.T) {
-	raw := `{"signal":"BUY","confidence":0.5,"reasoning":"` + strings.Repeat("a", 2001) + `","horizon_days":30,"key_factors":[]}`
+func TestParseVerdictRejectsAbsurdReasoning(t *testing.T) {
+	raw := `{"signal":"BUY","confidence":0.5,"reasoning":"` + strings.Repeat("a", absurdReasoningLen+1) + `","horizon_days":30,"key_factors":[]}`
 	if _, err := ParseVerdict(raw); err == nil {
-		t.Fatal("expected error for reasoning over 2000 chars")
+		t.Fatalf("expected error for reasoning over %d chars", absurdReasoningLen)
+	}
+}
+
+func TestParseVerdictTrimsVerboseReasoning(t *testing.T) {
+	long := strings.Repeat("Gold holds its range. ", 60)
+	raw := `{"signal":"HOLD","confidence":0.5,"reasoning":"` + long + `","horizon_days":30,"key_factors":[]}`
+	v, err := ParseVerdict(raw)
+	if err != nil {
+		t.Fatalf("verbose reasoning should be trimmed, not rejected: %v", err)
+	}
+	if len(v.Reasoning) > maxReasoningLen {
+		t.Fatalf("reasoning is %d chars, want at most %d", len(v.Reasoning), maxReasoningLen)
+	}
+	if !strings.HasSuffix(v.Reasoning, ".") {
+		t.Fatalf("trim should end on a sentence, got %q", v.Reasoning)
+	}
+}
+
+func TestParseVerdictCapsKeyFactors(t *testing.T) {
+	raw := `{"signal":"HOLD","confidence":0.5,"reasoning":"Range holds.","horizon_days":30,` +
+		`"key_factors":["one","two","three","four"]}`
+	v, err := ParseVerdict(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(v.KeyFactors) != 3 {
+		t.Fatalf("key_factors is %d items, want 3", len(v.KeyFactors))
 	}
 }
 
