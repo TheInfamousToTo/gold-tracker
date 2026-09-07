@@ -9,7 +9,7 @@ import (
 )
 
 func (r *PostgresRepository) GetSignals(ctx context.Context, limit int) ([]model.SignalLog, error) {
-	rows, err := r.Pool.Query(ctx, "SELECT id, signal_date, signal_type, reasoning, price_at_signal, sent_to_discord, model, source FROM signals_log ORDER BY signal_date DESC LIMIT $1", limit)
+	rows, err := r.Pool.Query(ctx, "SELECT id, signal_date, metal, signal_type, reasoning, price_at_signal, sent_to_discord, model, source FROM signals_log ORDER BY signal_date DESC LIMIT $1", limit)
 	if err != nil {
 		return nil, err
 	}
@@ -21,6 +21,7 @@ func (r *PostgresRepository) GetSignals(ctx context.Context, limit int) ([]model
 		err := rows.Scan(
 			&s.ID,
 			&s.SignalDate,
+			&s.Metal,
 			&s.SignalType,
 			&s.Reasoning,
 			&s.PriceAtSignal,
@@ -39,13 +40,14 @@ func (r *PostgresRepository) GetSignals(ctx context.Context, limit int) ([]model
 func (r *PostgresRepository) CreateSignal(ctx context.Context, s model.SignalLog) (model.SignalLog, error) {
 	var newSignal model.SignalLog
 	err := r.Pool.QueryRow(ctx,
-		`INSERT INTO signals_log (signal_type, reasoning, price_at_signal, model, source)
-		 VALUES ($1, $2, $3, $4, $5)
-		 RETURNING id, signal_date, signal_type, reasoning, price_at_signal, sent_to_discord, model, source`,
-		s.SignalType, s.Reasoning, s.PriceAtSignal, s.Model, s.Source,
+		`INSERT INTO signals_log (metal, signal_type, reasoning, price_at_signal, model, source)
+		 VALUES ($1, $2, $3, $4, $5, $6)
+		 RETURNING id, signal_date, metal, signal_type, reasoning, price_at_signal, sent_to_discord, model, source`,
+		s.Metal, s.SignalType, s.Reasoning, s.PriceAtSignal, s.Model, s.Source,
 	).Scan(
 		&newSignal.ID,
 		&newSignal.SignalDate,
+		&newSignal.Metal,
 		&newSignal.SignalType,
 		&newSignal.Reasoning,
 		&newSignal.PriceAtSignal,
@@ -62,12 +64,13 @@ func (r *PostgresRepository) CreateSignal(ctx context.Context, s model.SignalLog
 func (r *PostgresRepository) GetLatestSignal(ctx context.Context, source string) (*model.SignalLog, error) {
 	var s model.SignalLog
 	err := r.Pool.QueryRow(ctx,
-		`SELECT id, signal_date, signal_type, reasoning, price_at_signal, sent_to_discord, model, source
+		`SELECT id, signal_date, metal, signal_type, reasoning, price_at_signal, sent_to_discord, model, source
 		 FROM signals_log WHERE source = $1 ORDER BY signal_date DESC LIMIT 1`,
 		source,
 	).Scan(
 		&s.ID,
 		&s.SignalDate,
+		&s.Metal,
 		&s.SignalType,
 		&s.Reasoning,
 		&s.PriceAtSignal,

@@ -8,7 +8,15 @@ import (
 )
 
 func (r *PostgresRepository) GetPortfolioSummary(ctx context.Context) (model.PortfolioSummary, error) {
-	rows, err := r.Pool.Query(ctx, "SELECT * FROM v_portfolio_summary ORDER BY purchase_date DESC, id DESC")
+	// Named rather than SELECT *: the scan below is positional, and the
+	// view's column list changes whenever a metal or a derived figure
+	// is added.
+	rows, err := r.Pool.Query(ctx, `
+		SELECT id, item_name, purchase_date, metal_type, purity_karat, purity_fineness,
+		       weight_grams, price_paid_total, price_per_gram_paid, latest_price_date,
+		       current_price_per_gram, current_value, gain_loss, gain_loss_pct
+		FROM v_portfolio_summary
+		ORDER BY purchase_date DESC, id DESC`)
 	if err != nil {
 		return model.PortfolioSummary{}, err
 	}
@@ -25,7 +33,9 @@ func (r *PostgresRepository) GetPortfolioSummary(ctx context.Context) (model.Por
 			&item.ID,
 			&item.ItemName,
 			&purchaseDate,
+			&item.MetalType,
 			&item.PurityKarat,
+			&item.PurityFineness,
 			&item.WeightGrams,
 			&item.PricePaidTotal,
 			&item.PricePerGramPaid,

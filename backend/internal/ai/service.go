@@ -30,6 +30,7 @@ type Status struct {
 // *repository.PostgresRepository satisfies it structurally.
 type SignalRepo interface {
 	GetPrices(ctx context.Context, limit int) ([]model.GoldPrice, error)
+	GetSilverPrices(ctx context.Context, limit int) ([]model.SilverPrice, error)
 	GetPortfolioSummary(ctx context.Context) (model.PortfolioSummary, error)
 	CreateSignal(ctx context.Context, s model.SignalLog) (model.SignalLog, error)
 	GetLatestSignal(ctx context.Context, source string) (*model.SignalLog, error)
@@ -119,39 +120,49 @@ func (s *Service) RunOnce(ctx context.Context, source string) {
 	}
 
 	prompt := BuildPrompt(input)
-	verdict, err := s.runAndParse(ctx, prompt)
+	metals := input.metalNames()
+	verdicts, err := s.runAndParse(ctx, prompt, metals)
 	if err != nil {
-		verdict, err = s.runAndParse(ctx, prompt+retryInstruction)
+		verdicts, err = s.runAndParse(ctx, prompt+retryInstruction, metals)
 	}
 	if err != nil {
 		s.finish(err.Error(), false)
 		return
 	}
 
-	signal := model.SignalLog{
-		SignalType:    verdict.Signal,
-		Reasoning:     &verdict.Reasoning,
-		PriceAtSignal: latestPrice(input.Prices),
-		Model:         &s.cfg.Model,
-		Source:        source,
-	}
-	if _, err := s.repo.CreateSignal(ctx, signal); err != nil {
-		s.finish("could not save the signal: "+err.Error(), false)
-		return
+	// Written in prompt order rather than map order so the panel lists
+	// the metals the same way on every run.
+	for _, m := range input.Metals {
+		verdict, ok := verdicts[m.Metal]
+		if !ok {
+			continue
+		}
+		signal := model.SignalLog{
+			Metal:         m.Metal,
+			SignalType:    verdict.Signal,
+			Reasoning:     &verdict.Reasoning,
+			PriceAtSignal: latestPrice(m.Prices),
+			Model:         &s.cfg.Model,
+			Source:        source,
+		}
+		if _, err := s.repo.CreateSignal(ctx, signal); err != nil {
+			s.finish("could not save the signal: "+err.Error(), false)
+			return
+		}
 	}
 
 	s.finish("", true)
 }
 
-func (s *Service) runAndParse(ctx context.Context, prompt string) (Verdict, error) {
+func (s *Service) runAndParse(ctx context.Context, prompt string, metals []string) (map[string]Verdict, error) {
 	result, err := s.runner.Run(ctx, prompt, s.cfg.Model)
 	if err != nil {
-		return Verdict{}, err
+		return nil, err
 	}
 	if result.IsError {
-		return Verdict{}, fmt.Errorf("claude reported an error: %s", result.Result)
+		return nil, fmt.Errorf("claude reported an error: %s", result.Result)
 	}
-	return ParseVerdict(result.Result)
+	return ParseVerdicts(result.Result, metals)
 }
 
 // latestPrice returns the newest observation, which gather has placed
@@ -160,14 +171,22 @@ func latestPrice(prices []PriceHistoryPoint) *float64 {
 	if len(prices) == 0 {
 		return nil
 	}
-	p := prices[len(prices)-1].PricePerGram24k
+	p := prices[len(prices)-1].PricePerGram
 	return &p
 }
 
 // gather reads the data the prompt needs and reduces holdings to
-// per-karat aggregates, so no per-item free text leaves the database.
+// per-purity aggregates, so no per-item free text leaves the database.
+//
+// A metal with neither prices nor holdings is left out entirely: an
+// owner who has never touched silver gets the same single-metal prompt
+// and single-metal response schema as before.
 func (s *Service) gather(ctx context.Context) (PromptInput, error) {
-	prices, err := s.repo.GetPrices(ctx, priceHistoryLimit)
+	goldPrices, err := s.repo.GetPrices(ctx, priceHistoryLimit)
+	if err != nil {
+		return PromptInput{}, err
+	}
+	silverPrices, err := s.repo.GetSilverPrices(ctx, priceHistoryLimit)
 	if err != nil {
 		return PromptInput{}, err
 	}
@@ -176,45 +195,98 @@ func (s *Service) gather(ctx context.Context) (PromptInput, error) {
 		return PromptInput{}, err
 	}
 
-	// GetPrices returns newest first; the model reads a series better
-	// oldest first.
-	points := make([]PriceHistoryPoint, 0, len(prices))
-	for i := len(prices) - 1; i >= 0; i-- {
-		points = append(points, PriceHistoryPoint{
-			Date:            prices[i].PriceDate,
-			PricePerGram24k: prices[i].PricePerGram24k,
+	goldPoints := make([]PriceHistoryPoint, 0, len(goldPrices))
+	for i := len(goldPrices) - 1; i >= 0; i-- {
+		goldPoints = append(goldPoints, PriceHistoryPoint{
+			Date:         goldPrices[i].PriceDate,
+			PricePerGram: goldPrices[i].PricePerGram24k,
+		})
+	}
+	silverPoints := make([]PriceHistoryPoint, 0, len(silverPrices))
+	for i := len(silverPrices) - 1; i >= 0; i-- {
+		silverPoints = append(silverPoints, PriceHistoryPoint{
+			Date:         silverPrices[i].PriceDate,
+			PricePerGram: silverPrices[i].PricePerGram999,
 		})
 	}
 
-	byKarat := map[float64]*HoldingsAggregate{}
-	karats := []float64{}
-	for _, item := range portfolio.Items {
-		agg, ok := byKarat[item.PurityKarat]
+	holdings := aggregateHoldings(portfolio.Items)
+
+	metals := []MetalData{{
+		Metal:    model.MetalGold,
+		Prices:   goldPoints,
+		Holdings: holdings[model.MetalGold],
+	}}
+	if len(silverPoints) > 0 || len(holdings[model.MetalSilver]) > 0 {
+		metals = append(metals, MetalData{
+			Metal:    model.MetalSilver,
+			Prices:   silverPoints,
+			Holdings: holdings[model.MetalSilver],
+		})
+	}
+
+	return PromptInput{
+		Metals:           metals,
+		TotalPaid:        portfolio.Totals.TotalPaid,
+		TotalValue:       portfolio.Totals.TotalValue,
+		TotalGainLossPct: portfolio.Totals.TotalGainLossPct,
+	}, nil
+}
+
+// aggregateHoldings groups items by metal and purity, preserving the
+// order each purity was first seen so the prompt is stable across runs.
+func aggregateHoldings(items []model.PortfolioItem) map[string][]HoldingsAggregate {
+	type key struct {
+		metal  string
+		purity string
+	}
+	byKey := map[key]*HoldingsAggregate{}
+	order := map[string][]key{}
+
+	for _, item := range items {
+		metal := item.MetalType
+		if metal == "" {
+			metal = model.MetalGold
+		}
+		k := key{metal: metal, purity: purityLabel(metal, item)}
+
+		agg, ok := byKey[k]
 		if !ok {
-			agg = &HoldingsAggregate{Karat: item.PurityKarat}
-			byKarat[item.PurityKarat] = agg
-			karats = append(karats, item.PurityKarat)
+			agg = &HoldingsAggregate{PurityLabel: k.purity}
+			byKey[k] = agg
+			order[metal] = append(order[metal], k)
 		}
 		agg.TotalWeightGrams += item.WeightGrams
 		agg.TotalPaid += item.PricePaidTotal
 	}
 
-	holdings := make([]HoldingsAggregate, 0, len(karats))
-	for _, k := range karats {
-		agg := byKarat[k]
-		if agg.TotalWeightGrams > 0 {
-			agg.AvgPricePerGram = agg.TotalPaid / agg.TotalWeightGrams
+	out := map[string][]HoldingsAggregate{}
+	for metal, keys := range order {
+		for _, k := range keys {
+			agg := byKey[k]
+			if agg.TotalWeightGrams > 0 {
+				agg.AvgPricePerGram = agg.TotalPaid / agg.TotalWeightGrams
+			}
+			out[metal] = append(out[metal], *agg)
 		}
-		holdings = append(holdings, *agg)
 	}
+	return out
+}
 
-	return PromptInput{
-		Prices:           points,
-		Holdings:         holdings,
-		TotalPaid:        portfolio.Totals.TotalPaid,
-		TotalValue:       portfolio.Totals.TotalValue,
-		TotalGainLossPct: portfolio.Totals.TotalGainLossPct,
-	}, nil
+// purityLabel writes a purity the way its metal is traded: gold in
+// karat, silver in millesimal fineness, which is the only notation
+// silver has.
+func purityLabel(metal string, item model.PortfolioItem) string {
+	if metal == model.MetalSilver {
+		if item.PurityFineness == nil {
+			return "unmarked"
+		}
+		return fmt.Sprintf("%.0f", *item.PurityFineness)
+	}
+	if item.PurityKarat == nil {
+		return "unmarked"
+	}
+	return fmt.Sprintf("%.0fK", *item.PurityKarat)
 }
 
 // MaybeAutoGenerate starts a background run if AI is enabled, nothing

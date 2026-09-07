@@ -37,6 +37,62 @@ func (r *PostgresRepository) GetPrices(ctx context.Context, limit int) ([]model.
 	return prices, nil
 }
 
+func (r *PostgresRepository) GetSilverPrices(ctx context.Context, limit int) ([]model.SilverPrice, error) {
+	rows, err := r.Pool.Query(ctx, "SELECT id, price_date, price_per_gram_999, price_per_gram_925, price_per_gram_900, source, created_at FROM silver_prices ORDER BY price_date DESC LIMIT $1", limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	prices := []model.SilverPrice{}
+	for rows.Next() {
+		var p model.SilverPrice
+		var priceDate time.Time
+		err := rows.Scan(
+			&p.ID,
+			&priceDate,
+			&p.PricePerGram999,
+			&p.PricePerGram925,
+			&p.PricePerGram900,
+			&p.Source,
+			&p.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		p.PriceDate = priceDate.Format("2006-01-02")
+		prices = append(prices, p)
+	}
+	return prices, rows.Err()
+}
+
+func (r *PostgresRepository) CreateSilverPrice(ctx context.Context, p model.SilverPrice) (model.SilverPrice, error) {
+	var newPrice model.SilverPrice
+	var priceDate time.Time
+	err := r.Pool.QueryRow(ctx,
+		`INSERT INTO silver_prices (price_date, price_per_gram_999, source)
+		 VALUES ($1, $2, $3)
+		 ON CONFLICT (price_date) DO UPDATE
+		 SET price_per_gram_999 = EXCLUDED.price_per_gram_999,
+		     source = EXCLUDED.source
+		 RETURNING id, price_date, price_per_gram_999, price_per_gram_925, price_per_gram_900, source, created_at`,
+		p.PriceDate, p.PricePerGram999, p.Source,
+	).Scan(
+		&newPrice.ID,
+		&priceDate,
+		&newPrice.PricePerGram999,
+		&newPrice.PricePerGram925,
+		&newPrice.PricePerGram900,
+		&newPrice.Source,
+		&newPrice.CreatedAt,
+	)
+	if err != nil {
+		return newPrice, err
+	}
+	newPrice.PriceDate = priceDate.Format("2006-01-02")
+	return newPrice, nil
+}
+
 func (r *PostgresRepository) CreatePrice(ctx context.Context, p model.GoldPrice) (model.GoldPrice, error) {
 	var newPrice model.GoldPrice
 	var priceDate time.Time

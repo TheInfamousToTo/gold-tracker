@@ -11,9 +11,10 @@ import (
 )
 
 type fakeRepo struct {
-	mu          sync.Mutex
-	prices      []model.GoldPrice
-	portfolio   model.PortfolioSummary
+	mu           sync.Mutex
+	prices       []model.GoldPrice
+	silverPrices []model.SilverPrice
+	portfolio    model.PortfolioSummary
 	created     []model.SignalLog
 	latestBySrc map[string]*model.SignalLog
 	createErr   error
@@ -25,6 +26,10 @@ func newFakeRepo() *fakeRepo {
 
 func (f *fakeRepo) GetPrices(ctx context.Context, limit int) ([]model.GoldPrice, error) {
 	return f.prices, nil
+}
+
+func (f *fakeRepo) GetSilverPrices(ctx context.Context, limit int) ([]model.SilverPrice, error) {
+	return f.silverPrices, nil
 }
 
 func (f *fakeRepo) GetPortfolioSummary(ctx context.Context) (model.PortfolioSummary, error) {
@@ -371,13 +376,41 @@ func TestMaybeAutoGenerateSkipsWhileManualRunInFlight(t *testing.T) {
 	}
 }
 
+// goldItem and silverItem build portfolio rows the way the view
+// returns them: each metal carries only its own purity column.
+func goldItem(karat, grams, paid float64) model.PortfolioItem {
+	k := karat
+	return model.PortfolioItem{
+		MetalType: model.MetalGold, PurityKarat: &k, WeightGrams: grams, PricePaidTotal: paid,
+	}
+}
+
+func silverItem(fineness, grams, paid float64) model.PortfolioItem {
+	f := fineness
+	return model.PortfolioItem{
+		MetalType: model.MetalSilver, PurityFineness: &f, WeightGrams: grams, PricePaidTotal: paid,
+	}
+}
+
+// metalByName finds a metal's section of the prompt input.
+func metalByName(t *testing.T, in PromptInput, name string) MetalData {
+	t.Helper()
+	for _, m := range in.Metals {
+		if m.Metal == name {
+			return m
+		}
+	}
+	t.Fatalf("no %s section in prompt input (%d metals)", name, len(in.Metals))
+	return MetalData{}
+}
+
 func TestGatherAggregatesHoldingsByKarat(t *testing.T) {
 	repo := newFakeRepo()
 	repo.portfolio = model.PortfolioSummary{
 		Items: []model.PortfolioItem{
-			{PurityKarat: 21, WeightGrams: 10, PricePaidTotal: 400},
-			{PurityKarat: 21, WeightGrams: 30, PricePaidTotal: 1200},
-			{PurityKarat: 24, WeightGrams: 5, PricePaidTotal: 250},
+			goldItem(21, 10, 400),
+			goldItem(21, 30, 1200),
+			goldItem(24, 5, 250),
 		},
 	}
 	svc := NewService(repo, &fakeRunner{}, testConfig())
@@ -386,20 +419,84 @@ func TestGatherAggregatesHoldingsByKarat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gather: %v", err)
 	}
-	if len(in.Holdings) != 2 {
-		t.Fatalf("expected 2 karat groups, got %d", len(in.Holdings))
+	holdings := metalByName(t, in, model.MetalGold).Holdings
+	if len(holdings) != 2 {
+		t.Fatalf("expected 2 karat groups, got %d", len(holdings))
 	}
 
-	byKarat := map[float64]HoldingsAggregate{}
-	for _, h := range in.Holdings {
-		byKarat[h.Karat] = h
+	byPurity := map[string]HoldingsAggregate{}
+	for _, h := range holdings {
+		byPurity[h.PurityLabel] = h
 	}
-	k21 := byKarat[21]
+	k21 := byPurity["21K"]
 	if k21.TotalWeightGrams != 40 || k21.TotalPaid != 1600 {
 		t.Errorf("21K = %+v, want 40g / 1600 paid", k21)
 	}
 	if k21.AvgPricePerGram != 40 {
 		t.Errorf("21K average = %v, want 40", k21.AvgPricePerGram)
+	}
+}
+
+// Gold and silver are separate markets. Pooling their holdings would
+// hand the model one blended entry price that matches neither.
+func TestGatherKeepsMetalsApart(t *testing.T) {
+	repo := newFakeRepo()
+	repo.silverPrices = []model.SilverPrice{{PriceDate: "2026-08-01", PricePerGram999: 0.41}}
+	repo.portfolio = model.PortfolioSummary{
+		Items: []model.PortfolioItem{
+			goldItem(21, 10, 400),
+			silverItem(925, 100, 40),
+		},
+	}
+	svc := NewService(repo, &fakeRunner{}, testConfig())
+
+	in, err := svc.gather(context.Background())
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+
+	gold := metalByName(t, in, model.MetalGold)
+	if len(gold.Holdings) != 1 || gold.Holdings[0].PurityLabel != "21K" {
+		t.Errorf("gold holdings = %+v, want a single 21K group", gold.Holdings)
+	}
+	silver := metalByName(t, in, model.MetalSilver)
+	if len(silver.Holdings) != 1 || silver.Holdings[0].PurityLabel != "925" {
+		t.Errorf("silver holdings = %+v, want a single 925 group", silver.Holdings)
+	}
+	if silver.Holdings[0].TotalWeightGrams != 100 {
+		t.Errorf("silver mass = %v, want 100", silver.Holdings[0].TotalWeightGrams)
+	}
+}
+
+// An owner who has never touched silver must keep getting the
+// single-metal prompt and its flat response schema.
+func TestGatherOmitsSilverWhenThereIsNone(t *testing.T) {
+	repo := newFakeRepo()
+	repo.portfolio = model.PortfolioSummary{Items: []model.PortfolioItem{goldItem(21, 10, 400)}}
+	svc := NewService(repo, &fakeRunner{}, testConfig())
+
+	in, err := svc.gather(context.Background())
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	if len(in.Metals) != 1 || in.Metals[0].Metal != model.MetalGold {
+		t.Fatalf("metals = %+v, want gold only", in.metalNames())
+	}
+}
+
+// Silver prices with no silver holdings still deserve a verdict: that
+// is exactly the position of someone deciding whether to start.
+func TestGatherIncludesSilverOnPricesAlone(t *testing.T) {
+	repo := newFakeRepo()
+	repo.silverPrices = []model.SilverPrice{{PriceDate: "2026-08-01", PricePerGram999: 0.41}}
+	svc := NewService(repo, &fakeRunner{}, testConfig())
+
+	in, err := svc.gather(context.Background())
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	if len(in.Metals) != 2 {
+		t.Fatalf("metals = %v, want gold and silver", in.metalNames())
 	}
 }
 
@@ -417,11 +514,12 @@ func TestGatherOrdersPricesOldestFirst(t *testing.T) {
 	if err != nil {
 		t.Fatalf("gather: %v", err)
 	}
-	if in.Prices[0].Date != "2026-08-01" {
-		t.Errorf("first price = %s, want the oldest (2026-08-01)", in.Prices[0].Date)
+	prices := metalByName(t, in, model.MetalGold).Prices
+	if prices[0].Date != "2026-08-01" {
+		t.Errorf("first price = %s, want the oldest (2026-08-01)", prices[0].Date)
 	}
-	if in.Prices[len(in.Prices)-1].Date != "2026-08-03" {
-		t.Errorf("last price = %s, want the newest (2026-08-03)", in.Prices[len(in.Prices)-1].Date)
+	if prices[len(prices)-1].Date != "2026-08-03" {
+		t.Errorf("last price = %s, want the newest (2026-08-03)", prices[len(prices)-1].Date)
 	}
 }
 
@@ -470,5 +568,61 @@ func TestTryStartAutoIgnoresManualCooldown(t *testing.T) {
 
 	if err := svc.TryStart("auto"); err != nil {
 		t.Fatalf("auto start should ignore the manual cooldown, got %v", err)
+	}
+}
+
+// Gold and silver get a row each, so the panel can show that the two
+// markets disagree rather than collapsing them into one call.
+func TestRunOnceWritesASignalPerMetal(t *testing.T) {
+	repo := newFakeRepo()
+	repo.prices = []model.GoldPrice{{PriceDate: "2026-08-01", PricePerGram24k: 46}}
+	repo.silverPrices = []model.SilverPrice{{PriceDate: "2026-08-01", PricePerGram999: 0.41}}
+	runner := &fakeRunner{fn: func(call int) (RunResult, error) {
+		return RunResult{Result: `{"gold":{"signal":"HOLD","confidence":0.5,"reasoning":"Flat.","horizon_days":30,"key_factors":[]},
+		                          "silver":{"signal":"BUY","confidence":0.7,"reasoning":"Breaking out.","horizon_days":30,"key_factors":[]}}`}, nil
+	}}
+	svc := NewService(repo, runner, testConfig())
+
+	svc.RunOnce(context.Background(), "manual")
+
+	if repo.createdCount() != 2 {
+		t.Fatalf("created %d signals, want one per metal", repo.createdCount())
+	}
+
+	byMetal := map[string]model.SignalLog{}
+	for _, s := range repo.created {
+		byMetal[s.Metal] = s
+	}
+	if byMetal[model.MetalGold].SignalType != "HOLD" {
+		t.Errorf("gold signal = %q, want HOLD", byMetal[model.MetalGold].SignalType)
+	}
+	if byMetal[model.MetalSilver].SignalType != "BUY" {
+		t.Errorf("silver signal = %q, want BUY", byMetal[model.MetalSilver].SignalType)
+	}
+
+	// Each row records its own metal's rate, not gold's for both.
+	if got := byMetal[model.MetalSilver].PriceAtSignal; got == nil || *got != 0.41 {
+		t.Errorf("silver price_at_signal = %v, want 0.41", got)
+	}
+	if got := byMetal[model.MetalGold].PriceAtSignal; got == nil || *got != 46 {
+		t.Errorf("gold price_at_signal = %v, want 46", got)
+	}
+}
+
+func TestRunOnceRecordsMetalOnASingleMetalRun(t *testing.T) {
+	repo := newFakeRepo()
+	repo.prices = []model.GoldPrice{{PriceDate: "2026-08-01", PricePerGram24k: 46}}
+	runner := &fakeRunner{fn: func(call int) (RunResult, error) {
+		return RunResult{Result: goodVerdict}, nil
+	}}
+	svc := NewService(repo, runner, testConfig())
+
+	svc.RunOnce(context.Background(), "manual")
+
+	if repo.createdCount() != 1 {
+		t.Fatalf("created %d signals, want 1", repo.createdCount())
+	}
+	if repo.created[0].Metal != model.MetalGold {
+		t.Errorf("metal = %q, want gold", repo.created[0].Metal)
 	}
 }
