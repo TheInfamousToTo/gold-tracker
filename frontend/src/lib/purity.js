@@ -53,6 +53,23 @@ export function fineness(karat) {
 }
 
 /**
+ * Splits a single form purity into the two columns the API expects.
+ *
+ * An item carries only the notation its metal is traded in and leaves
+ * the other null — the schema's CHECK constraint rejects a row that
+ * fills both, and a silver row claiming a karat would be meaningless
+ * even if it were allowed.
+ */
+export function purityColumns(metal, value) {
+  const n = Number(value);
+  const valid = Number.isFinite(n) && n > 0;
+  return {
+    purity_karat: metal === 'silver' || !valid ? null : n,
+    purity_fineness: metal === 'silver' && valid ? n : null,
+  };
+}
+
+/**
  * How a holding's purity is written on the piece.
  *
  * `mark` is the millesimal number stamped on the metal; `qualifier` is

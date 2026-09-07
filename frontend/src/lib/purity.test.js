@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   fineness,
   purityMark,
+  purityColumns,
   purityOptions,
   KARAT_OPTIONS,
   SILVER_OPTIONS,
@@ -94,5 +95,23 @@ describe('purityMark', () => {
     expect(purityMark('silver', {}).mark).toBe('—');
     expect(purityMark('gold', {}).mark).toBe('—');
     expect(purityMark('gold').mark).toBe('—');
+  });
+});
+
+describe('purityColumns', () => {
+  it('puts a gold purity in the karat column only', () => {
+    expect(purityColumns('gold', '21')).toEqual({ purity_karat: 21, purity_fineness: null });
+  });
+
+  // Sending both columns is rejected by the schema's CHECK constraint,
+  // so the form must never fill the one its metal does not use.
+  it('puts a silver purity in the fineness column only', () => {
+    expect(purityColumns('silver', '925')).toEqual({ purity_karat: null, purity_fineness: 925 });
+  });
+
+  it('nulls both for a purity that is missing or nonsense', () => {
+    expect(purityColumns('gold', '')).toEqual({ purity_karat: null, purity_fineness: null });
+    expect(purityColumns('gold', 0)).toEqual({ purity_karat: null, purity_fineness: null });
+    expect(purityColumns('silver', 'abc')).toEqual({ purity_karat: null, purity_fineness: null });
   });
 });

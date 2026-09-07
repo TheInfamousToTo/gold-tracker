@@ -1,27 +1,59 @@
 import { NavTabs } from './NavTabs.jsx';
 import { fmt, fmtDate, daysSince } from '../../lib/format.js';
+import { METAL_FINE_LABEL } from '../../lib/prices.js';
 
 /** A price older than this is no longer the price. */
 const STALE_AFTER_DAYS = 2;
 
+function feedState(price, date) {
+  const age = daysSince(date);
+  if (price == null || age == null) return { className: 'andon-bad', label: 'No price' };
+  if (age > STALE_AFTER_DAYS) return { className: 'andon-warn', label: `Stale · ${age}d` };
+  return { className: 'andon-ok', label: 'Current' };
+}
+
 /**
- * The masthead doubles as the price board: the current 24K spot is the
- * number the owner opens this app to see, so it is the first thing on
- * the page rather than one card among four.
+ * The spot price for one metal, with a chip saying whether the board
+ * can be trusted.
  *
  * The figure itself is set in neutral type. A spot price is data, not a
  * verdict — colouring it would spend the andon on something that is
- * never good or bad. What does get a colour is whether the board can be
- * trusted: fresh, stale, or missing.
+ * never good or bad. What does get a colour is the feed's condition:
+ * fresh, stale, or missing. Each metal carries its own, because the
+ * gold feed can be running while the silver one has stopped.
  */
-export function AppShell({ activeTab, onTabChange, spotPrice, spotDate, error, onReconnect, onSignOut, children }) {
-  const age = daysSince(spotDate);
-  const feed =
-    spotPrice == null || age == null
-      ? { className: 'andon-bad', label: 'No price' }
-      : age > STALE_AFTER_DAYS
-        ? { className: 'andon-warn', label: `Stale · ${age}d` }
-        : { className: 'andon-ok', label: 'Current' };
+function SpotPrice({ metal, price, date }) {
+  const feed = feedState(price, date);
+  return (
+    <div className="flex items-baseline gap-2">
+      <span className="stamp">
+        {METAL_FINE_LABEL[metal]} {metal}
+      </span>
+      <span className="font-mono text-lg font-semibold text-chalk">
+        {price != null ? fmt(price, 3) : '—'}
+      </span>
+      <span className="stamp">BHD/g</span>
+      <span
+        className={`andon ${feed.className} ml-1`}
+        title={date ? `Last recorded ${fmtDate(date)}` : 'No price recorded'}
+      >
+        {feed.label}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The masthead doubles as the price board: the current spot is the
+ * number the owner opens this app to see, so it is the first thing on
+ * the page rather than one card among four.
+ *
+ * Silver appears only once there is a silver price to show. An owner
+ * who only holds gold should not be reading around a permanent dash.
+ */
+export function AppShell({ activeTab, onTabChange, spots, error, onReconnect, onSignOut, children }) {
+  const gold = spots?.gold || {};
+  const silver = spots?.silver || {};
 
   return (
     <div className="min-h-screen bg-ink">
@@ -34,19 +66,10 @@ export function AppShell({ activeTab, onTabChange, spotPrice, spotDate, error, o
             </span>
           </div>
 
-          <div className="flex items-baseline gap-2">
-            <span className="stamp">24K spot</span>
-            <span className="font-mono text-lg font-semibold text-chalk">
-              {spotPrice != null ? fmt(spotPrice, 3) : '—'}
-            </span>
-            <span className="stamp">BHD/g</span>
-            <span
-              className={`andon ${feed.className} ml-1`}
-              title={spotDate ? `Last recorded ${fmtDate(spotDate)}` : 'No price recorded'}
-            >
-              {feed.label}
-            </span>
-          </div>
+          <SpotPrice metal="gold" price={gold.price} date={gold.date} />
+          {silver.price != null && (
+            <SpotPrice metal="silver" price={silver.price} date={silver.date} />
+          )}
 
           <div className="ml-auto flex items-center gap-2">
             <NavTabs activeTab={activeTab} onChange={onTabChange} />

@@ -19,6 +19,10 @@ export function SignalCard({ signal }) {
     >
       <header className="mb-3 flex flex-wrap items-center gap-3">
         <Badge variant={TONE[type] || 'idle'}>{type}</Badge>
+        {/* Which market the call is about. Neutral type: naming a metal
+            is not a status, and the verdict beside it already carries
+            the colour. */}
+        <span className="stamp text-chalk">{signal.metal || 'gold'}</span>
         <span className="stamp">{new Date(signal.signal_date).toLocaleString()}</span>
         {signal.price_at_signal != null && (
           <span className="ml-auto font-mono text-xs text-muted">
