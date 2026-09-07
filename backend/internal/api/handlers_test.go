@@ -19,6 +19,10 @@ func (stubRepo) GetPrices(ctx context.Context, limit int) ([]model.GoldPrice, er
 	return nil, nil
 }
 
+func (stubRepo) GetSilverPrices(ctx context.Context, limit int) ([]model.SilverPrice, error) {
+	return nil, nil
+}
+
 func (stubRepo) GetPortfolioSummary(ctx context.Context) (model.PortfolioSummary, error) {
 	return model.PortfolioSummary{}, nil
 }
@@ -167,4 +171,92 @@ type instantRunner struct{}
 
 func (instantRunner) Run(ctx context.Context, prompt, model string) (ai.RunResult, error) {
 	return ai.RunResult{Result: `{"signal":"HOLD","confidence":0.5,"reasoning":"x","horizon_days":30,"key_factors":[]}`}, nil
+}
+
+func floatPtr(v float64) *float64 { return &v }
+
+func TestValidateItemDefaultsToGold(t *testing.T) {
+	item := model.GoldItem{
+		ItemName: "Chain", PurchaseDate: "2026-08-01", WeightGrams: 10,
+		PurityKarat: floatPtr(21),
+	}
+	if err := validateItem(&item); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if item.MetalType != model.MetalGold {
+		t.Errorf("metal = %q, want gold", item.MetalType)
+	}
+}
+
+func TestValidateItemRequiresKaratForGold(t *testing.T) {
+	item := model.GoldItem{
+		MetalType: model.MetalGold, ItemName: "Chain", PurchaseDate: "2026-08-01", WeightGrams: 10,
+	}
+	if err := validateItem(&item); err == nil {
+		t.Fatal("expected an error when gold has no purity_karat")
+	}
+}
+
+func TestValidateItemRequiresFinenessForSilver(t *testing.T) {
+	item := model.GoldItem{
+		MetalType: model.MetalSilver, ItemName: "Tray", PurchaseDate: "2026-08-01", WeightGrams: 100,
+		PurityKarat: floatPtr(21),
+	}
+	if err := validateItem(&item); err == nil {
+		t.Fatal("expected an error when silver has no purity_fineness")
+	}
+}
+
+// Each metal carries only its own purity notation. Leaving the other
+// column populated would violate nothing in the CHECK constraint but
+// would leave a silver row claiming a karat it cannot have.
+func TestValidateItemClearsTheOtherMetalsPurity(t *testing.T) {
+	silver := model.GoldItem{
+		MetalType: model.MetalSilver, ItemName: "Tray", PurchaseDate: "2026-08-01", WeightGrams: 100,
+		PurityKarat: floatPtr(21), PurityFineness: floatPtr(925),
+	}
+	if err := validateItem(&silver); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if silver.PurityKarat != nil {
+		t.Errorf("silver kept purity_karat = %v, want nil", *silver.PurityKarat)
+	}
+
+	gold := model.GoldItem{
+		MetalType: model.MetalGold, ItemName: "Bar", PurchaseDate: "2026-08-01", WeightGrams: 10,
+		PurityKarat: floatPtr(24), PurityFineness: floatPtr(925),
+	}
+	if err := validateItem(&gold); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gold.PurityFineness != nil {
+		t.Errorf("gold kept purity_fineness = %v, want nil", *gold.PurityFineness)
+	}
+}
+
+func TestValidateItemRejectsAnUnknownMetal(t *testing.T) {
+	item := model.GoldItem{
+		MetalType: model.MetalGold + "-plated", ItemName: "Ring", PurchaseDate: "2026-08-01",
+		WeightGrams: 10, PurityKarat: floatPtr(21),
+	}
+	if err := validateItem(&item); err == nil {
+		t.Fatal("expected an error for an unknown metal")
+	}
+}
+
+// The n8n feed posts no metal at all, and must keep writing gold.
+func TestRequestedMetalDefaultsToGold(t *testing.T) {
+	metal, err := requestedMetal("")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if metal != model.MetalGold {
+		t.Errorf("metal = %q, want gold", metal)
+	}
+}
+
+func TestRequestedMetalRejectsAnythingElse(t *testing.T) {
+	if _, err := requestedMetal("platinum"); err == nil {
+		t.Fatal("expected an error for an unsupported metal")
+	}
 }

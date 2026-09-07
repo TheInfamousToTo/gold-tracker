@@ -136,7 +136,7 @@ before it is stored.
 
 - `/backend`: The Go API source code.
 - `/frontend`: The React application and its Nginx configuration.
-- `/migrations`: Structured SQL logic for the database.
+- `/backend/migrations`: Schema migrations, embedded in the binary and applied at startup.
 - `.github/workflows`: Automated build and deployment pipelines.
 
 ## 🤝 Contributing

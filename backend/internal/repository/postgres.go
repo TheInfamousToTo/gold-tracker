@@ -3,8 +3,11 @@ package repository
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
+	"sort"
 
+	"github.com/TheInfamousToTo/gold-tracker/backend/migrations"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -39,16 +42,39 @@ func NewPostgresRepository() (*PostgresRepository, error) {
 		return nil, fmt.Errorf("unable to connect to database: %v", err)
 	}
 
-	// Bring existing installs up to date. Both statements are
-	// idempotent, so this is safe to run on every boot.
-	if _, err := pool.Exec(context.Background(), `
-		ALTER TABLE signals_log ADD COLUMN IF NOT EXISTS model TEXT;
-		ALTER TABLE signals_log ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'manual';
-	`); err != nil {
-		return nil, fmt.Errorf("unable to apply signals_log migration: %v", err)
+	// Bring existing installs up to date. Every migration is written to
+	// be idempotent, so this is safe to run on every boot.
+	if err := applyMigrations(context.Background(), pool); err != nil {
+		return nil, err
 	}
 
 	return &PostgresRepository{Pool: pool}, nil
+}
+
+// applyMigrations runs every embedded migration in filename order.
+//
+// There is no ledger table: each file is written so that re-running it
+// is a no-op, which keeps a fresh container and a long-lived one on the
+// same path. The cost is that migrations must stay idempotent — a bare
+// ALTER TABLE ADD COLUMN without IF NOT EXISTS would fail the second
+// boot and take the API down with it.
+func applyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
+	entries, err := fs.Glob(migrations.Files, "*.sql")
+	if err != nil {
+		return fmt.Errorf("unable to list migrations: %v", err)
+	}
+	sort.Strings(entries)
+
+	for _, name := range entries {
+		statements, err := migrations.Files.ReadFile(name)
+		if err != nil {
+			return fmt.Errorf("unable to read migration %s: %v", name, err)
+		}
+		if _, err := pool.Exec(ctx, string(statements)); err != nil {
+			return fmt.Errorf("unable to apply migration %s: %v", name, err)
+		}
+	}
+	return nil
 }
 
 func (r *PostgresRepository) Close() {

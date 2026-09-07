@@ -22,7 +22,12 @@ export function HoldingRow({ item, onEdit, onDelete }) {
         </p>
       </td>
       <td className="px-5 py-4">
-        <Hallmark karat={item.purity_karat} size="sm" />
+        <Hallmark
+          metal={item.metal_type || 'gold'}
+          karat={item.purity_karat}
+          fineness={item.purity_fineness}
+          size="sm"
+        />
       </td>
       <td className="px-5 py-4 text-right font-mono text-sm text-chalk">{fmt(item.weight_grams, 2)}</td>
       <td className="px-5 py-4 text-right font-mono text-sm text-muted">{fmt(item.price_per_gram_paid, 3)}</td>

@@ -46,3 +46,7 @@ old_backend/
 # Compiled backend binary
 backend/gold-tracker-api
 backend/main
+
+# Exported n8n workflows — they carry live webhook URLs and credential ids
+*.n8n.json
+Gold Tracker - Automated BHD Sync*.json

@@ -54,7 +54,7 @@ export function PriceChart({ prices, purchases }) {
     () =>
       [...prices]
         .sort((a, b) => new Date(a.price_date) - new Date(b.price_date))
-        .map((p) => ({ date: dayOf(p.price_date), price: p.price_per_gram_24k })),
+        .map((p) => ({ date: dayOf(p.price_date), price: p.rate })),
     [prices],
   );
 

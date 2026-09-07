@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../../api/client.js';
-import { KARAT_OPTIONS } from '../../lib/karat.js';
+import { METALS, purityOptions, purityColumns } from '../../lib/purity.js';
 import { Card } from '../ui/Card.jsx';
 import { Button } from '../ui/Button.jsx';
 import { Field, inputClass } from '../ui/Field.jsx';
+
+/** The purity a metal defaults to: the one most commonly bought. */
+const DEFAULT_PURITY = { gold: '21', silver: '925' };
 
 const EMPTY = {
   purchase_date: new Date().toISOString().split('T')[0],
   item_name: '',
   metal_type: 'gold',
-  purity_karat: '21',
+  purity: DEFAULT_PURITY.gold,
   weight_grams: '',
   price_paid_total: '',
   vendor: '',
@@ -18,15 +21,31 @@ const EMPTY = {
 
 function toFormState(item) {
   if (!item) return EMPTY;
+  const metal = item.metal_type || 'gold';
+  const purity = metal === 'silver' ? item.purity_fineness : item.purity_karat;
   return {
     purchase_date: item.purchase_date,
     item_name: item.item_name,
-    metal_type: 'gold',
-    purity_karat: String(item.purity_karat),
+    metal_type: metal,
+    purity: purity == null ? DEFAULT_PURITY[metal] : String(Number(purity)),
     weight_grams: String(item.weight_grams),
     price_paid_total: String(item.price_paid_total),
     vendor: item.vendor || '',
     notes: item.notes || '',
+  };
+}
+
+/**
+ * The API takes purity in the column its metal uses, so the single
+ * `purity` field the form holds is split on the way out.
+ */
+function toPayload(form) {
+  const { purity, ...rest } = form;
+  return {
+    ...rest,
+    ...purityColumns(form.metal_type, purity),
+    weight_grams: Number(form.weight_grams),
+    price_paid_total: Number(form.price_paid_total),
   };
 }
 
@@ -42,6 +61,13 @@ export function ItemForm({ editingItem, onSaved, onCancelEdit }) {
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  // Karat and fineness are different scales, so a purity carried over
+  // from the other metal would be nonsense — 21 fineness, or 925 karat.
+  const setMetal = (e) => {
+    const metal_type = e.target.value;
+    setForm((f) => ({ ...f, metal_type, purity: DEFAULT_PURITY[metal_type] }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
@@ -50,7 +76,7 @@ export function ItemForm({ editingItem, onSaved, onCancelEdit }) {
       await apiRequest(editingItem ? `/api/items/${editingItem.id}` : '/api/items', {
         method: editingItem ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(toPayload(form)),
       });
       setForm(EMPTY);
       onSaved();
@@ -84,11 +110,19 @@ export function ItemForm({ editingItem, onSaved, onCancelEdit }) {
           </Field>
         </div>
 
-        <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
-          <Field label="Purity" htmlFor="purity_karat">
-            <select id="purity_karat" value={form.purity_karat} onChange={set('purity_karat')}
-              className={inputClass}>
-              {KARAT_OPTIONS.map((o) => (
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-4">
+          <Field label="Metal" htmlFor="metal_type">
+            <select id="metal_type" value={form.metal_type} onChange={setMetal} className={inputClass}>
+              {METALS.map((m) => (
+                <option key={m.value} value={m.value} className="bg-ink-raised">
+                  {m.label}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Purity" htmlFor="purity">
+            <select id="purity" value={form.purity} onChange={set('purity')} className={inputClass}>
+              {purityOptions(form.metal_type).map((o) => (
                 <option key={o.value} value={o.value} className="bg-ink-raised">
                   {o.label} · {o.description}
                 </option>
@@ -100,7 +134,7 @@ export function ItemForm({ editingItem, onSaved, onCancelEdit }) {
               placeholder="0.000" value={form.weight_grams} onChange={set('weight_grams')}
               className={`${inputClass} font-mono`} />
           </Field>
-          <Field label="Total paid" htmlFor="price_paid_total" hint="BHD, including making charges">
+          <Field label="Total paid" htmlFor="price_paid_total" hint="BHD, with making charges">
             <input id="price_paid_total" type="number" step="0.001" min="0" required
               placeholder="0.000" value={form.price_paid_total} onChange={set('price_paid_total')}
               className={`${inputClass} font-mono`} />

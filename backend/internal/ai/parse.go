@@ -27,8 +27,54 @@ const absurdReasoningLen = 8000
 
 var validSignals = map[string]bool{"BUY": true, "SELL": true, "HOLD": true}
 
-// ParseVerdict extracts the first balanced JSON object from raw and
-// validates it against the verdict schema.
+// ParseVerdicts extracts the first balanced JSON object from raw and
+// validates a verdict for each metal named in metals.
+//
+// Two response shapes are accepted. A flat object carrying a "signal"
+// key is the single-metal answer, and is only valid when one metal was
+// asked about. Otherwise each metal must appear as a key of its own,
+// because gold and silver are separate markets and a run that returned
+// one verdict for both would be silently wrong for whichever metal it
+// did not actually judge.
+func ParseVerdicts(raw string, metals []string) (map[string]Verdict, error) {
+	jsonStr, err := extractFirstJSONObject(raw)
+	if err != nil {
+		return nil, err
+	}
+
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonStr), &fields); err != nil {
+		return nil, fmt.Errorf("verdict is not valid JSON: %w", err)
+	}
+
+	if _, flat := fields["signal"]; flat {
+		if len(metals) != 1 {
+			return nil, fmt.Errorf("expected a verdict per metal (%s), got a single flat verdict",
+				strings.Join(metals, ", "))
+		}
+		v, err := validateVerdict([]byte(jsonStr))
+		if err != nil {
+			return nil, err
+		}
+		return map[string]Verdict{metals[0]: v}, nil
+	}
+
+	verdicts := make(map[string]Verdict, len(metals))
+	for _, metal := range metals {
+		body, ok := fields[metal]
+		if !ok {
+			return nil, fmt.Errorf("response has no verdict for %s", metal)
+		}
+		v, err := validateVerdict(body)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", metal, err)
+		}
+		verdicts[metal] = v
+	}
+	return verdicts, nil
+}
+
+// ParseVerdict validates a single flat verdict object.
 //
 // Headless CLI invocation has no equivalent of the API's
 // output_config.format, so the schema is enforced here instead. The
@@ -39,9 +85,12 @@ func ParseVerdict(raw string) (Verdict, error) {
 	if err != nil {
 		return Verdict{}, err
 	}
+	return validateVerdict([]byte(jsonStr))
+}
 
+func validateVerdict(jsonStr []byte) (Verdict, error) {
 	var v Verdict
-	if err := json.Unmarshal([]byte(jsonStr), &v); err != nil {
+	if err := json.Unmarshal(jsonStr, &v); err != nil {
 		return Verdict{}, fmt.Errorf("verdict is not valid JSON: %w", err)
 	}
 
