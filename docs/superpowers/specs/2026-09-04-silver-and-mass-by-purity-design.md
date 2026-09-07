@@ -182,7 +182,41 @@ evidence is thin, and with a short price history that pressure is always
 applied.
 
 The probe: a `//go:build aiprobe` test that builds the real prompt over
-four synthetic series — sharp rally, sharp crash, flat drift, sparse —
-runs each through the real CLI runner, and tallies the verdicts. Four
-HOLDs means the prompt is the problem. It spends subscription quota, so
-it is opt-in behind the build tag and never runs in CI.
+five synthetic series — sustained rally, sustained slide, flat drift,
+sparse history, and a sharp crash after a long rise — runs each through
+the real CLI runner, and tallies the verdicts. One verdict everywhere
+means the prompt is the problem. It spends subscription quota, so it is
+opt-in behind the build tag and never runs in CI.
+
+### Result, 2026-09-07
+
+Five scenarios returned **3 HOLD and 2 SELL. No BUY.**
+
+| Scenario | Verdict | Confidence |
+|---|---|---|
+| Sustained rally, price far above entry | HOLD | 0.42 |
+| Sustained slide, price far below entry | SELL | 0.78 |
+| Flat drift | HOLD | 0.35 |
+| Sparse history | HOLD | 0.35 |
+| Sharp crash after a long rise | SELL | 0.58 |
+
+So HOLD is not a default — the model moves off it, with confidence
+tracking how clear the picture is. But BUY was unreachable, and the two
+cases that should most invite it produced the opposite call.
+
+The cause is the prompt's own framing. It asks first for "where price
+goes over the horizon", which makes the task a price forecast, and the
+signal then follows the forecast's direction: falling price becomes
+SELL, rising price becomes "stretched, don't enter" — HOLD. Under that
+reading a dip is a reason to sell, which is backwards for someone
+accumulating physical metal, where a dip is the entry.
+
+The prompt never says what the three signals mean for this owner. Until
+it does, the model supplies a momentum trader's definitions. Fixing it
+means stating the owner's position — a long-horizon accumulator holding
+physical metal, who cannot trade intraday and whose SELL is a rare
+event — and defining BUY as an attractive entry against the owner's own
+average, rather than a bet that price rises tomorrow.
+
+That is a change to what a recommendation *means*, not a bug fix, so it
+is left for the owner to decide rather than folded in here.
