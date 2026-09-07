@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { apiRequest } from '../../api/client.js';
-import { KARAT_OPTIONS } from '../../lib/karat.js';
+import { KARAT_OPTIONS } from '../../lib/purity.js';
 import { Card } from '../ui/Card.jsx';
 import { Button } from '../ui/Button.jsx';
 import { Field, inputClass } from '../ui/Field.jsx';

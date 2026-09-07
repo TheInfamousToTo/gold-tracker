@@ -7,6 +7,7 @@ import { useSignalRun } from './hooks/useSignalRun.js';
 import { AppShell } from './components/layout/AppShell.jsx';
 import { StatGrid } from './components/holdings/StatGrid.jsx';
 import { HoldingsTable } from './components/holdings/HoldingsTable.jsx';
+import { MassByPurity } from './components/holdings/MassByPurity.jsx';
 import { ItemForm } from './components/forms/ItemForm.jsx';
 import { PriceForm } from './components/forms/PriceForm.jsx';
 import { PriceChart } from './components/market/PriceChart.jsx';
@@ -82,6 +83,7 @@ function Dashboard({ onSignOut }) {
             onDelete={deleteItem}
             onAddFirst={() => setActiveTab('add-item')}
           />
+          <MassByPurity items={items} loading={loading} />
         </div>
       )}
 
