@@ -260,3 +260,20 @@ func TestRequestedMetalRejectsAnythingElse(t *testing.T) {
 		t.Fatal("expected an error for an unsupported metal")
 	}
 }
+
+func TestPriceLimit(t *testing.T) {
+	cases := map[string]int{
+		"":     defaultPriceRows,
+		"abc":  defaultPriceRows,
+		"0":    defaultPriceRows,
+		"-5":   defaultPriceRows,
+		"30":   30,
+		"3650": 3650,
+		"9999": maxPriceRows,
+	}
+	for raw, want := range cases {
+		if got := priceLimit(raw); got != want {
+			t.Errorf("priceLimit(%q) = %d, want %d", raw, got, want)
+		}
+	}
+}

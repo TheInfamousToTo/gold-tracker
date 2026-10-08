@@ -129,7 +129,7 @@ function Dashboard({ onSignOut }) {
           <div className="space-y-6">
             <PriceForm onSaved={refreshData} />
             <PriceHistoryList
-              prices={metalPrices}
+              prices={metalPrices.slice(0, 60)}
               title={`Recent ${marketMetal} prices`}
             />
           </div>

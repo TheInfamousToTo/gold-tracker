@@ -11,7 +11,9 @@ export const RANGES = [
   { key: '6M', label: '6M', caption: 'Past 6 months' },
   { key: 'YTD', label: 'YTD', caption: 'Year to date' },
   { key: '1Y', label: '1Y', caption: 'Past year' },
+  { key: '2Y', label: '2Y', caption: 'Past 2 years' },
   { key: '5Y', label: '5Y', caption: 'Past 5 years' },
+  { key: '10Y', label: '10Y', caption: 'Past 10 years' },
   { key: 'ALL', label: 'All', caption: 'All recorded' },
 ];
 
@@ -39,7 +41,9 @@ export function rangeStart(key, last) {
     case '6M': return shift(last, { months: -6 });
     case 'YTD': return `${last.slice(0, 4)}-01-01`;
     case '1Y': return shift(last, { years: -1 });
+    case '2Y': return shift(last, { years: -2 });
     case '5Y': return shift(last, { years: -5 });
+    case '10Y': return shift(last, { years: -10 });
     default: return null;
   }
 }

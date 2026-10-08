@@ -9,7 +9,9 @@ describe('rangeStart', () => {
     expect(rangeStart('5D', '2026-10-08')).toBe('2026-10-03');
     expect(rangeStart('1M', '2026-10-08')).toBe('2026-09-08');
     expect(rangeStart('1Y', '2026-10-08')).toBe('2025-10-08');
+    expect(rangeStart('2Y', '2026-10-08')).toBe('2024-10-08');
     expect(rangeStart('5Y', '2026-10-08')).toBe('2021-10-08');
+    expect(rangeStart('10Y', '2026-10-08')).toBe('2016-10-08');
   });
 
   it('crosses a year boundary', () => {
@@ -56,6 +58,18 @@ describe('availableRanges', () => {
     const data = series(['2026-08-08', '2026-10-08']);
     expect(keys(availableRanges(data))).not.toContain('5D');
   });
+
+  // Daily rows for three years: everything up to 2Y can be filled, 5Y
+  // and 10Y would only repeat All.
+  it('offers the multi-year windows once the history reaches them', () => {
+    const days = [];
+    for (let t = Date.UTC(2023, 9, 1); t <= Date.UTC(2026, 9, 8); t += 864e5) {
+      days.push(new Date(t).toISOString().slice(0, 10));
+    }
+    expect(keys(availableRanges(series(days)))).toEqual(
+      ['5D', '1M', '3M', '6M', 'YTD', '1Y', '2Y', 'ALL'],
+    );
+  });
 });
 
 describe('rangeStats', () => {
@@ -70,4 +84,5 @@ describe('rangeStats', () => {
   it('returns null for an empty window', () => {
     expect(rangeStats([])).toBeNull();
   });
+
 });

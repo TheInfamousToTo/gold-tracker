@@ -159,12 +159,29 @@ func requestedMetal(value string) (string, error) {
 	return value, nil
 }
 
-func (h *Handler) GetPrices(c *gin.Context) {
-	limitStr := c.DefaultQuery("limit", "60")
-	limit, _ := strconv.Atoi(limitStr)
-	if limit > 365 {
-		limit = 365
+// Prices are one row per day, so the cap is a number of days. Ten years
+// covers the chart's longest window; the old 365 cap meant "5Y" could
+// never have anything to draw.
+const (
+	defaultPriceRows = 60
+	maxPriceRows     = 3700
+)
+
+// priceLimit reads ?limit=, falling back to the default for anything
+// missing or non-positive rather than issuing LIMIT 0.
+func priceLimit(raw string) int {
+	limit, err := strconv.Atoi(raw)
+	if err != nil || limit <= 0 {
+		return defaultPriceRows
 	}
+	if limit > maxPriceRows {
+		return maxPriceRows
+	}
+	return limit
+}
+
+func (h *Handler) GetPrices(c *gin.Context) {
+	limit := priceLimit(c.Query("limit"))
 
 	metal, err := requestedMetal(c.Query("metal"))
 	if err != nil {

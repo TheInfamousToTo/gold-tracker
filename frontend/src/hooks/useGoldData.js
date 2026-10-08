@@ -2,6 +2,10 @@ import { useState, useCallback, useEffect } from 'react';
 import { apiRequest } from '../api/client.js';
 import { withRates } from '../lib/prices.js';
 
+// One row per day; matches the API's cap of ~10 years. Without it the API
+// returns its default of 60 rows and the chart cannot offer more than 1M.
+const PRICE_HISTORY_ROWS = 3700;
+
 const EMPTY_PORTFOLIO = { items: [], totals: {}, has_price_data: false };
 
 /**
@@ -24,8 +28,8 @@ export function useGoldData() {
     try {
       const [portfolioData, goldPrices, silverPrices, signalsData] = await Promise.all([
         apiRequest('/api/portfolio'),
-        apiRequest('/api/prices'),
-        apiRequest('/api/prices?metal=silver'),
+        apiRequest(`/api/prices?limit=${PRICE_HISTORY_ROWS}`),
+        apiRequest(`/api/prices?metal=silver&limit=${PRICE_HISTORY_ROWS}`),
         apiRequest('/api/signals'),
       ]);
       setPortfolio(portfolioData || EMPTY_PORTFOLIO);
