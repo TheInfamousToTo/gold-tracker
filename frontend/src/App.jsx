@@ -116,7 +116,7 @@ function Dashboard({ onSignOut }) {
               title={`${METAL_FINE_LABEL[marketMetal]} spot price`}
               actions={<MetalToggle metal={marketMetal} onChange={setMarketMetal} />}
             >
-              <PriceChart prices={metalPrices} purchases={purchaseMarks} />
+              <PriceChart prices={metalPrices} purchases={purchaseMarks} metal={marketMetal} />
             </Card>
             <SignalPanel
               signals={signals}
