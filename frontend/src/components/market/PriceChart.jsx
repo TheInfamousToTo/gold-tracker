@@ -107,11 +107,13 @@ export function PriceChart({ prices, purchases, metal = 'gold' }) {
     return map;
   }, [marks]);
 
-  const ranges = useMemo(() => availableRanges(data), [data]);
+  // Every window is shown so the options are always visible; ones the
+  // recorded history cannot fill yet are disabled rather than hidden.
+  const enabled = useMemo(() => new Set(availableRanges(data).map((r) => r.key)), [data]);
   const [picked, setPicked] = useState('1Y');
   // Switching metal can leave the picked window unavailable; fall back
   // to the widest one on offer rather than drawing an empty plot.
-  const rangeKey = ranges.some((r) => r.key === picked) ? picked : 'ALL';
+  const rangeKey = enabled.has(picked) ? picked : 'ALL';
   const caption = RANGES.find((r) => r.key === rangeKey).caption;
 
   const visible = useMemo(() => sliceRange(data, rangeKey), [data, rangeKey]);
@@ -220,19 +222,28 @@ export function PriceChart({ prices, purchases, metal = 'gold' }) {
         </ResponsiveContainer>
       </div>
 
-      <div className="flex gap-1 rounded-lg border border-line bg-ink-sunken p-1" role="group" aria-label="Time range">
-        {ranges.map((r) => {
+      <div
+        className="grid grid-cols-5 gap-1 rounded-lg border border-line bg-ink-sunken p-1 sm:flex"
+        role="group"
+        aria-label="Time range"
+      >
+        {RANGES.map((r) => {
           const active = r.key === rangeKey;
+          const disabled = !enabled.has(r.key);
           return (
             <button
               key={r.key}
               type="button"
               onClick={() => setPicked(r.key)}
               aria-pressed={active}
+              disabled={disabled}
+              title={disabled ? `History starts ${fmtDate(data[0].date)}, not enough for ${r.label}` : undefined}
               className={`flex-1 rounded-md py-1.5 font-display text-xs font-semibold tracking-wide transition-colors ${
                 active
                   ? 'bg-ink-raised text-chalk ring-1 ring-chalk/80'
-                  : 'text-muted hover:bg-line/50 hover:text-chalk'
+                  : disabled
+                    ? 'cursor-not-allowed text-muted/35'
+                    : 'text-muted hover:bg-line/50 hover:text-chalk'
               }`}
             >
               {r.label}
