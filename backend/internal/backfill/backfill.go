@@ -132,9 +132,11 @@ func ChooseFactor(measured float64, overlap int, override float64) (float64, err
 }
 
 // Missing returns the quotes on or after `since` whose date has no row
-// yet, converted to BHD per gram and rounded to the 3 decimals the
-// dinar is quoted in.
-func Missing(quotes []Quote, stored map[string]float64, since string, factor float64) []Quote {
+// yet, converted to BHD per gram and rounded to `decimals` places, which
+// must match what the live feed stores: 3 for gold, 4 for silver (near
+// 0.4 BHD/g, 3 places would round away much of a day's move).
+func Missing(quotes []Quote, stored map[string]float64, since string, factor float64, decimals int) []Quote {
+	scale := math.Pow(10, float64(decimals))
 	var out []Quote
 	for _, q := range quotes {
 		if q.Date < since {
@@ -144,7 +146,7 @@ func Missing(quotes []Quote, stored map[string]float64, since string, factor flo
 			continue
 		}
 		perGram := q.Close / GramsPerTroyOunce * factor
-		out = append(out, Quote{Date: q.Date, Close: math.Round(perGram*1000) / 1000})
+		out = append(out, Quote{Date: q.Date, Close: math.Round(perGram*scale) / scale})
 	}
 	return out
 }

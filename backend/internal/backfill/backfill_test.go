@@ -74,8 +74,20 @@ func TestMissingSkipsStoredAndOldDays(t *testing.T) {
 		{"2026-10-02", GramsPerTroyOunce * 100},
 	}
 	stored := map[string]float64{"2026-10-02": 37.6}
-	got := Missing(quotes, stored, "2021-01-01", BHDPerUSD)
+	got := Missing(quotes, stored, "2021-01-01", BHDPerUSD, 3)
 	if len(got) != 1 || got[0].Date != "2026-10-01" || got[0].Close != 37.6 {
 		t.Fatalf("got %+v", got)
+	}
+}
+
+// Silver is stored at 4 places by the live feed; 3 would put a visible
+// rounding step at the seam between backfilled and live rows.
+func TestMissingRoundsToTheMetalsPrecision(t *testing.T) {
+	q := []Quote{{"2026-10-01", 32.17}} // USD/oz silver
+	if got := Missing(q, nil, "2021-01-01", BHDPerUSD, 4)[0].Close; got != 0.3889 {
+		t.Fatalf("4 places: got %v", got)
+	}
+	if got := Missing(q, nil, "2021-01-01", BHDPerUSD, 3)[0].Close; got != 0.389 {
+		t.Fatalf("3 places: got %v", got)
 	}
 }

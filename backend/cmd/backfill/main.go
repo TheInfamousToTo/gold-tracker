@@ -33,11 +33,13 @@ import (
 
 type metal struct {
 	name, table, column, source string
+	// Places the live n8n feed rounds to, so the two series match.
+	decimals int
 }
 
 var metals = map[string]metal{
-	"gold":   {"gold", "gold_prices", "price_per_gram_24k", "https://stooq.com/q/d/l/?s=xauusd&i=d"},
-	"silver": {"silver", "silver_prices", "price_per_gram_999", "https://stooq.com/q/d/l/?s=xagusd&i=d"},
+	"gold":   {"gold", "gold_prices", "price_per_gram_24k", "https://stooq.com/q/d/l/?s=xauusd&i=d", 3},
+	"silver": {"silver", "silver_prices", "price_per_gram_999", "https://stooq.com/q/d/l/?s=xagusd&i=d", 4},
 }
 
 func main() {
@@ -107,7 +109,7 @@ func run(ctx context.Context, pool *pgxpool.Pool, m metal, src, since string, ov
 	if err != nil {
 		return err
 	}
-	rows := backfill.Missing(quotes, stored, since, f)
+	rows := backfill.Missing(quotes, stored, since, f, m.decimals)
 
 	fmt.Printf("%s: %d CSV days (%s .. %s), %d rows already stored\n",
 		m.name, len(quotes), quotes[0].Date, quotes[len(quotes)-1].Date, len(stored))
@@ -120,8 +122,8 @@ func run(ctx context.Context, pool *pgxpool.Pool, m metal, src, since string, ov
 		fmt.Printf("%s: nothing missing since %s\n", m.name, since)
 		return nil
 	}
-	fmt.Printf("%s: %d missing days from %s to %s, e.g. %s = %.3f BHD/g\n",
-		m.name, len(rows), rows[0].Date, rows[len(rows)-1].Date, rows[len(rows)-1].Date, rows[len(rows)-1].Close)
+	fmt.Printf("%s: %d missing days from %s to %s, e.g. %s = %.*f BHD/g\n",
+		m.name, len(rows), rows[0].Date, rows[len(rows)-1].Date, rows[len(rows)-1].Date, m.decimals, rows[len(rows)-1].Close)
 	if !apply {
 		return nil
 	}
