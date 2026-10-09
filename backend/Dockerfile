@@ -8,7 +8,8 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/main.go \
+ && CGO_ENABLED=0 GOOS=linux go build -o backfill ./cmd/backfill
 
 # Run stage
 #
@@ -28,6 +29,8 @@ ENV CLAUDE_CONFIG_DIR=/app/.claude
 RUN mkdir -p /app/.claude
 
 COPY --from=builder /app/main .
+# One-off history import; see cmd/backfill. Not run by default.
+COPY --from=builder /app/backfill .
 COPY --from=builder /app/.env* ./
 
 EXPOSE 3000
