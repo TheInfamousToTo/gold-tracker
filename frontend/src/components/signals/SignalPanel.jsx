@@ -1,11 +1,13 @@
 import { SignalCard } from './SignalCard.jsx';
+import { ReviewBox } from './ReviewBox.jsx';
 import { Card } from '../ui/Card.jsx';
 import { Button } from '../ui/Button.jsx';
 import { Badge } from '../ui/Badge.jsx';
 import { EmptyState } from '../ui/EmptyState.jsx';
 
-export function SignalPanel({ signals, status, generating, error, onGenerate }) {
+export function SignalPanel({ signals, status, generating, error, onGenerate, onReview, onRecordBuy }) {
   const enabled = !!status?.enabled;
+  const reviewing = generating && status?.kind === 'review';
   const failed = error || status?.last_error;
 
   return (
@@ -13,7 +15,8 @@ export function SignalPanel({ signals, status, generating, error, onGenerate }) 
       title="Analysis"
       actions={
         enabled ? (
-          <Button size="sm" onClick={onGenerate} loading={generating} loadingLabel="Analysing">
+          <Button size="sm" onClick={onGenerate} loading={generating && !reviewing} disabled={reviewing}
+            loadingLabel="Analysing">
             Analyse now
           </Button>
         ) : (
@@ -26,7 +29,8 @@ export function SignalPanel({ signals, status, generating, error, onGenerate }) 
       {!enabled && (
         <p className="mb-4 text-xs leading-relaxed text-muted">
           Set <code className="font-mono text-chalk">AI_ENABLED=true</code> on the API to generate
-          buy and sell recommendations from your price history and holdings.
+          sized buy, hold, sell and cut-loss calls from ten years of prices, your holdings,
+          your budget and the latest news.
         </p>
       )}
 
@@ -37,19 +41,21 @@ export function SignalPanel({ signals, status, generating, error, onGenerate }) 
         </p>
       )}
 
+      {enabled && <ReviewBox disabled={generating && !reviewing} busy={reviewing} onReview={onReview} />}
+
       {signals.length === 0 ? (
         <EmptyState
           title="No analysis yet"
           description={
             enabled
-              ? 'Run an analysis to get a buy, sell, or hold call on your current position.'
+              ? 'Run an analysis to get a sized call per metal, checked against the news.'
               : 'Recommendations appear here once analysis is switched on.'
           }
           action={enabled ? { label: 'Analyse now', onClick: onGenerate } : undefined}
         />
       ) : (
         <div className="space-y-4">
-          {signals.map((s) => <SignalCard key={s.id} signal={s} />)}
+          {signals.map((s) => <SignalCard key={s.id} signal={s} onRecordBuy={onRecordBuy} />)}
         </div>
       )}
     </Card>

@@ -1,6 +1,8 @@
 package model
 
 import (
+	"encoding/json"
+	"errors"
 	"time"
 )
 
@@ -68,6 +70,110 @@ type SignalLog struct {
 	SentToDiscord bool      `json:"sent_to_discord"`
 	Model         *string   `json:"model"`
 	Source        string    `json:"source"`
+
+	// Kind separates the scheduled or on-demand analysis from a review
+	// of a plan the owner typed. A review's SignalType is its verdict
+	// (GOOD_IDEA, ADJUST, BAD_IDEA) and SuggestedAction is what it
+	// recommends doing instead, if anything.
+	Kind            string     `json:"kind"`
+	Confidence      *float64   `json:"confidence"`
+	HorizonDays     *int       `json:"horizon_days"`
+	KeyFactors      []string   `json:"key_factors"`
+	AmountBHD       *float64   `json:"amount_bhd"`
+	AmountGrams     *float64   `json:"amount_grams"`
+	Levels          *Levels    `json:"levels"`
+	News            []NewsItem `json:"news"`
+	NewsChecked     bool       `json:"news_checked"`
+	Deviates        bool       `json:"deviates"`
+	SuggestedAction *string    `json:"suggested_action"`
+	PlanText        *string    `json:"plan_text"`
+
+	// Baseline is the rules engine's own answer, kept so a verdict that
+	// departs from it can be compared against what the rules said.
+	Baseline json.RawMessage `json:"baseline,omitempty"`
+}
+
+const (
+	SignalKindAnalysis = "analysis"
+	SignalKindReview   = "review"
+)
+
+// Levels are the prices at which the call would change: below
+// BuyMoreBelow the dip is deep enough to buy extra, and below
+// CutLossBelow the position has fallen past the owner's stop.
+type Levels struct {
+	BuyMoreBelow *float64 `json:"buy_more_below,omitempty"`
+	CutLossBelow *float64 `json:"cut_loss_below,omitempty"`
+}
+
+// NewsItem is one article the model cited. Only items with a real
+// http(s) URL are kept, so every claim can be opened and checked.
+type NewsItem struct {
+	Title  string `json:"title"`
+	Source string `json:"source"`
+	Date   string `json:"date"`
+	URL    string `json:"url"`
+	Impact string `json:"impact"`
+}
+
+// AdvisorSettings is what the advisor sizes against. There is one row.
+type AdvisorSettings struct {
+	MonthlyBudgetBHD float64    `json:"monthly_budget_bhd"`
+	ReserveBHD       float64    `json:"reserve_bhd"`
+	TargetGoldPct    float64    `json:"target_gold_pct"`
+	SpreadPctGold    float64    `json:"spread_pct_gold"`
+	SpreadPctSilver  float64    `json:"spread_pct_silver"`
+	MinFeeBHD        float64    `json:"min_fee_bhd"`
+	StopLossPct      float64    `json:"stop_loss_pct"`
+	NewsEnabled      bool       `json:"news_enabled"`
+	UpdatedAt        *time.Time `json:"updated_at"`
+}
+
+// DefaultAdvisorSettings matches the column defaults in migration 0003.
+func DefaultAdvisorSettings() AdvisorSettings {
+	return AdvisorSettings{
+		TargetGoldPct:   80,
+		SpreadPctGold:   1,
+		SpreadPctSilver: 1,
+		StopLossPct:     15,
+		NewsEnabled:     true,
+	}
+}
+
+// Validate bounds every field to a range that means something, so a
+// typo cannot tell the advisor to size against a negative budget.
+func (s AdvisorSettings) Validate() error {
+	switch {
+	case s.MonthlyBudgetBHD < 0 || s.MonthlyBudgetBHD > 1e6:
+		return errors.New("monthly_budget_bhd must be between 0 and 1,000,000")
+	case s.ReserveBHD < 0 || s.ReserveBHD > 1e7:
+		return errors.New("reserve_bhd must be between 0 and 10,000,000")
+	case s.TargetGoldPct < 0 || s.TargetGoldPct > 100:
+		return errors.New("target_gold_pct must be between 0 and 100")
+	case s.SpreadPctGold < 0 || s.SpreadPctGold > 20, s.SpreadPctSilver < 0 || s.SpreadPctSilver > 20:
+		return errors.New("spreads must be between 0 and 20 percent")
+	case s.MinFeeBHD < 0 || s.MinFeeBHD > 1000:
+		return errors.New("min_fee_bhd must be between 0 and 1,000")
+	case s.StopLossPct <= 0 || s.StopLossPct > 90:
+		return errors.New("stop_loss_pct must be above 0 and at most 90")
+	}
+	return nil
+}
+
+// SpreadFraction is the one-way spread for a metal as a fraction.
+func (s AdvisorSettings) SpreadFraction(metal string) float64 {
+	if metal == MetalSilver {
+		return s.SpreadPctSilver / 100
+	}
+	return s.SpreadPctGold / 100
+}
+
+// TargetShare is a metal's target fraction of the portfolio.
+func (s AdvisorSettings) TargetShare(metal string) float64 {
+	if metal == MetalSilver {
+		return 1 - s.TargetGoldPct/100
+	}
+	return s.TargetGoldPct / 100
 }
 
 type PortfolioItem struct {

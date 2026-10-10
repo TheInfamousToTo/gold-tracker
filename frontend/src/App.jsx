@@ -15,6 +15,8 @@ import { PriceChart } from './components/market/PriceChart.jsx';
 import { MetalToggle } from './components/market/MetalToggle.jsx';
 import { PriceHistoryList } from './components/market/PriceHistoryList.jsx';
 import { SignalPanel } from './components/signals/SignalPanel.jsx';
+import { AdvisorSettings } from './components/signals/AdvisorSettings.jsx';
+import { purchaseDraft } from './lib/advice.js';
 import { Card } from './components/ui/Card.jsx';
 import { Toast } from './components/ui/Toast.jsx';
 
@@ -22,6 +24,7 @@ function Dashboard({ onSignOut }) {
   const [activeTab, setActiveTab] = useState('holdings');
   const [marketMetal, setMarketMetal] = useState('gold');
   const [editingItem, setEditingItem] = useState(null);
+  const [draft, setDraft] = useState(null);
   const [toast, setToast] = useState(null);
 
   const { portfolio, prices, signals, loading, error, refreshData } = useGoldData();
@@ -51,9 +54,18 @@ function Dashboard({ onSignOut }) {
     setActiveTab('add-item');
   }, []);
 
+  // "I did it" on a recommended buy: open the purchase form pre-filled,
+  // so the next analysis sees the new holding and the budget it used.
+  const recordBuy = useCallback((buy) => {
+    setEditingItem(null);
+    setDraft(purchaseDraft(buy));
+    setActiveTab('add-item');
+  }, []);
+
   const handleItemSaved = useCallback(async () => {
     showToast(editingItem ? 'Changes saved' : 'Purchase added');
     setEditingItem(null);
+    setDraft(null);
     await refreshData();
     setActiveTab('holdings');
   }, [editingItem, refreshData, showToast]);
@@ -79,7 +91,7 @@ function Dashboard({ onSignOut }) {
   return (
     <AppShell
       activeTab={activeTab}
-      onTabChange={setActiveTab}
+      onTabChange={(tab) => { setDraft(null); setActiveTab(tab); }}
       spots={spots}
       error={error}
       onReconnect={refreshData}
@@ -103,6 +115,7 @@ function Dashboard({ onSignOut }) {
         <div className="mx-auto max-w-3xl">
           <ItemForm
             editingItem={editingItem}
+            draft={draft}
             onSaved={handleItemSaved}
             onCancelEdit={() => setEditingItem(null)}
           />
@@ -124,9 +137,12 @@ function Dashboard({ onSignOut }) {
               generating={signalRun.generating}
               error={signalRun.error}
               onGenerate={signalRun.generate}
+              onReview={signalRun.review}
+              onRecordBuy={recordBuy}
             />
           </div>
           <div className="space-y-6">
+            <AdvisorSettings />
             <PriceForm onSaved={refreshData} />
             <PriceHistoryList
               prices={metalPrices.slice(0, 60)}

@@ -2,16 +2,20 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/TheInfamousToTo/gold-tracker/backend/internal/model"
 )
 
-// priceHistoryLimit is how many price rows the model is shown.
-const priceHistoryLimit = 90
+// priceHistoryLimit is how many daily rows are read per metal: the whole
+// ten-year history, which the indicators need for their long windows.
+const priceHistoryLimit = 3700
 
 // retryInstruction is appended when the first response fails schema
 // validation.
@@ -20,6 +24,7 @@ const retryInstruction = "\n\nYour previous response could not be parsed as the 
 // Status is what GET /api/signals/status returns.
 type Status struct {
 	Running         bool       `json:"running"`
+	Kind            string     `json:"kind"`
 	StartedAt       *time.Time `json:"started_at"`
 	LastError       string     `json:"last_error"`
 	LastGeneratedAt *time.Time `json:"last_generated_at"`
@@ -32,6 +37,7 @@ type SignalRepo interface {
 	GetPrices(ctx context.Context, limit int) ([]model.GoldPrice, error)
 	GetSilverPrices(ctx context.Context, limit int) ([]model.SilverPrice, error)
 	GetPortfolioSummary(ctx context.Context) (model.PortfolioSummary, error)
+	GetAdvisorSettings(ctx context.Context) (model.AdvisorSettings, error)
 	CreateSignal(ctx context.Context, s model.SignalLog) (model.SignalLog, error)
 	GetLatestSignal(ctx context.Context, source string) (*model.SignalLog, error)
 }
@@ -42,12 +48,14 @@ type SignalRepo interface {
 var (
 	ErrAlreadyRunning = errors.New("a signal generation is already running")
 	ErrCoolingDown    = errors.New("please wait before generating another signal")
+	ErrEmptyPlan      = errors.New("describe the plan to review")
 )
 
 type Service struct {
 	repo   SignalRepo
 	runner Runner
 	cfg    Config
+	now    func() time.Time
 
 	mu           sync.Mutex
 	status       Status
@@ -55,7 +63,7 @@ type Service struct {
 }
 
 func NewService(repo SignalRepo, runner Runner, cfg Config) *Service {
-	return &Service{repo: repo, runner: runner, cfg: cfg}
+	return &Service{repo: repo, runner: runner, cfg: cfg, now: time.Now}
 }
 
 func (s *Service) Enabled() bool {
@@ -71,13 +79,17 @@ func (s *Service) GetStatus() Status {
 }
 
 // TryStart atomically claims the single-flight slot, returning nil when
-// the caller may proceed to RunOnce. It has no side effects on refusal.
+// the caller may proceed. It has no side effects on refusal.
 //
-// Manual starts additionally honour a cooldown. The API has no
-// authentication, so without one anything that can reach it could spend
-// subscription quota shared with the owner's interactive Claude Code
-// use. Automatic starts skip it: they already have the daily cap.
+// Manual starts — Analyse and Review alike — additionally honour a
+// cooldown, because both spend subscription quota shared with the
+// owner's interactive Claude Code use. Automatic starts skip it: they
+// already have the daily cap.
 func (s *Service) TryStart(source string) error {
+	return s.tryStart(source, model.SignalKindAnalysis)
+}
+
+func (s *Service) tryStart(source, kind string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -93,9 +105,18 @@ func (s *Service) TryStart(source string) error {
 	}
 
 	s.status.Running = true
+	s.status.Kind = kind
 	s.status.StartedAt = &now
 	s.status.LastError = ""
 	return nil
+}
+
+// StartReview claims the slot for a plan review.
+func (s *Service) StartReview(plan string) error {
+	if strings.TrimSpace(plan) == "" {
+		return ErrEmptyPlan
+	}
+	return s.tryStart("manual", model.SignalKindReview)
 }
 
 func (s *Service) finish(errMsg string, generated bool) {
@@ -109,184 +130,261 @@ func (s *Service) finish(errMsg string, generated bool) {
 	}
 }
 
-// RunOnce performs one generate cycle: gather, prompt, run, parse with
-// a single retry, persist. It releases the single-flight slot on every
-// exit path.
+// RunOnce performs one analysis: gather, compute, prompt, run, parse,
+// clamp, persist. It releases the single-flight slot on every exit path.
 func (s *Service) RunOnce(ctx context.Context, source string) {
-	input, err := s.gather(ctx)
+	in, err := s.gather(ctx)
 	if err != nil {
 		s.finish("could not read portfolio data: "+err.Error(), false)
 		return
 	}
+	metals := in.metalNames()
 
-	prompt := BuildPrompt(input)
-	metals := input.metalNames()
-	verdicts, err := s.runAndParse(ctx, prompt, metals)
-	if err != nil {
-		verdicts, err = s.runAndParse(ctx, prompt+retryInstruction, metals)
-	}
+	var advice map[string]Advice
+	newsChecked, err := s.runWithFallback(ctx, &in, BuildAnalysisPrompt, func(raw string) error {
+		var perr error
+		advice, perr = ParseAnalysis(raw, metals)
+		return perr
+	})
 	if err != nil {
 		s.finish(err.Error(), false)
 		return
 	}
 
+	clamped := make(map[string]*Clamped, len(in.Metals))
+	latest := map[string]float64{}
+	for _, m := range in.Metals {
+		c := clampAdvice(advice[m.Metal], m, in.Settings, in.Budget)
+		clamped[m.Metal] = &c
+		latest[m.Metal] = m.Indicators.Latest
+	}
+	capTotalBuys(clamped, in.Budget, latest, in.Settings)
+
 	// Written in prompt order rather than map order so the panel lists
 	// the metals the same way on every run.
-	for _, m := range input.Metals {
-		verdict, ok := verdicts[m.Metal]
-		if !ok {
-			continue
+	for _, m := range in.Metals {
+		c := clamped[m.Metal]
+		sig := s.signalFor(m, c.Advice, source, newsChecked)
+		sig.SignalType = c.Action
+		sig.AmountBHD = optional(c.AmountBHD)
+		sig.AmountGrams = optional(c.AmountGrams)
+		sig.Deviates = c.Deviates
+		if c.HorizonDays > 0 {
+			h := c.HorizonDays
+			sig.HorizonDays = &h
 		}
-		signal := model.SignalLog{
-			Metal:         m.Metal,
-			SignalType:    verdict.Signal,
-			Reasoning:     &verdict.Reasoning,
-			PriceAtSignal: latestPrice(m.Prices),
-			Model:         &s.cfg.Model,
-			Source:        source,
-		}
-		if _, err := s.repo.CreateSignal(ctx, signal); err != nil {
+		if _, err := s.repo.CreateSignal(ctx, sig); err != nil {
 			s.finish("could not save the signal: "+err.Error(), false)
 			return
 		}
 	}
-
 	s.finish("", true)
 }
 
-func (s *Service) runAndParse(ctx context.Context, prompt string, metals []string) (map[string]Verdict, error) {
-	result, err := s.runner.Run(ctx, prompt, s.cfg.Model)
+// RunReview judges a plan the owner typed and saves the answer.
+func (s *Service) RunReview(ctx context.Context, plan string) {
+	in, err := s.gather(ctx)
 	if err != nil {
-		return nil, err
+		s.finish("could not read portfolio data: "+err.Error(), false)
+		return
 	}
-	if result.IsError {
-		return nil, fmt.Errorf("claude reported an error: %s", result.Result)
+	plan = sanitizePlan(plan)
+
+	var review Review
+	newsChecked, err := s.runWithFallback(ctx, &in, func(in AdvisorInput) string {
+		return BuildReviewPrompt(in, plan)
+	}, func(raw string) error {
+		var perr error
+		review, perr = ParseReview(raw)
+		return perr
+	})
+	if err != nil {
+		s.finish(err.Error(), false)
+		return
 	}
-	return ParseVerdicts(result.Result, metals)
+
+	sig := model.SignalLog{
+		Kind:        model.SignalKindReview,
+		SignalType:  review.Verdict,
+		Reasoning:   &review.Reasoning,
+		Confidence:  &review.Confidence,
+		KeyFactors:  review.KeyFactors,
+		News:        review.News,
+		NewsChecked: newsChecked,
+		Model:       &s.cfg.Model,
+		Source:      "manual",
+		PlanText:    &plan,
+	}
+	if sg := review.Suggested; sg != nil {
+		for _, m := range in.Metals {
+			if m.Metal != sg.Metal {
+				continue
+			}
+			c := clampAdvice(Advice{Action: sg.Action, AmountBHD: sg.AmountBHD}, m, in.Settings, in.Budget)
+			sig.Metal = m.Metal
+			sig.SuggestedAction = &c.Action
+			sig.AmountBHD = optional(c.AmountBHD)
+			sig.AmountGrams = optional(c.AmountGrams)
+			sig.PriceAtSignal = optional(m.Indicators.Latest)
+			sig.Levels = levelsOf(m.Baseline)
+			sig.Deviates = c.Deviates
+			if raw, err := json.Marshal(m.Baseline); err == nil {
+				sig.Baseline = raw
+			}
+		}
+	}
+	if _, err := s.repo.CreateSignal(ctx, sig); err != nil {
+		s.finish("could not save the review: "+err.Error(), false)
+		return
+	}
+	s.finish("", true)
 }
 
-// latestPrice returns the newest observation, which gather has placed
-// last. Nil when there is no price history at all.
-func latestPrice(prices []PriceHistoryPoint) *float64 {
-	if len(prices) == 0 {
+func (s *Service) signalFor(m MetalState, a Advice, source string, newsChecked bool) model.SignalLog {
+	sig := model.SignalLog{
+		Kind:          model.SignalKindAnalysis,
+		Metal:         m.Metal,
+		Reasoning:     &a.Reasoning,
+		Confidence:    &a.Confidence,
+		KeyFactors:    a.KeyFactors,
+		News:          a.News,
+		NewsChecked:   newsChecked,
+		PriceAtSignal: optional(m.Indicators.Latest),
+		Levels:        levelsOf(m.Baseline),
+		Model:         &s.cfg.Model,
+		Source:        source,
+	}
+	if raw, err := json.Marshal(m.Baseline); err == nil {
+		sig.Baseline = raw
+	}
+	return sig
+}
+
+func levelsOf(b Baseline) *model.Levels {
+	if b.BuyMoreBelow == nil && b.CutLossBelow == nil {
 		return nil
 	}
-	p := prices[len(prices)-1].PricePerGram
-	return &p
+	return &model.Levels{BuyMoreBelow: b.BuyMoreBelow, CutLossBelow: b.CutLossBelow}
 }
 
-// gather reads the data the prompt needs and reduces holdings to
-// per-purity aggregates, so no per-item free text leaves the database.
-//
-// A metal with neither prices nor holdings is left out entirely: an
-// owner who has never touched silver gets the same single-metal prompt
-// and single-metal response schema as before.
-func (s *Service) gather(ctx context.Context) (PromptInput, error) {
+func optional(v float64) *float64 {
+	if v == 0 || math.IsNaN(v) {
+		return nil
+	}
+	return &v
+}
+
+// runWithFallback runs the prompt with news tools when they are enabled,
+// and once more without them if that run fails outright: a verdict on
+// the data alone beats no verdict. A response that fails to parse gets
+// one retry with the same tools. It reports whether news was checked.
+func (s *Service) runWithFallback(ctx context.Context, in *AdvisorInput, build func(AdvisorInput) string, parse func(string) error) (bool, error) {
+	attempt := func(tools []string) error {
+		prompt := build(*in)
+		raw, err := s.run(ctx, prompt, tools)
+		if err != nil {
+			return err
+		}
+		if perr := parse(raw); perr == nil {
+			return nil
+		}
+		raw, err = s.run(ctx, prompt+retryInstruction, tools)
+		if err != nil {
+			return err
+		}
+		return parse(raw)
+	}
+
+	if in.News {
+		err := attempt(NewsTools)
+		if err == nil {
+			return true, nil
+		}
+		if ctx.Err() != nil {
+			return false, err
+		}
+		in.News = false
+		if err2 := attempt(nil); err2 != nil {
+			return false, fmt.Errorf("%v (and without news: %v)", err, err2)
+		}
+		return false, nil
+	}
+	return false, attempt(nil)
+}
+
+func (s *Service) run(ctx context.Context, prompt string, tools []string) (string, error) {
+	result, err := s.runner.Run(ctx, prompt, s.cfg.Model, tools)
+	if err != nil {
+		return "", err
+	}
+	if result.IsError {
+		return "", fmt.Errorf("claude reported an error: %s", result.Result)
+	}
+	return result.Result, nil
+}
+
+// gather reads everything the advisor needs and computes the figures
+// and the baseline. A metal with neither prices nor holdings is left
+// out: an owner who never touched silver gets a gold-only answer.
+func (s *Service) gather(ctx context.Context) (AdvisorInput, error) {
 	goldPrices, err := s.repo.GetPrices(ctx, priceHistoryLimit)
 	if err != nil {
-		return PromptInput{}, err
+		return AdvisorInput{}, err
 	}
 	silverPrices, err := s.repo.GetSilverPrices(ctx, priceHistoryLimit)
 	if err != nil {
-		return PromptInput{}, err
+		return AdvisorInput{}, err
 	}
 	portfolio, err := s.repo.GetPortfolioSummary(ctx)
 	if err != nil {
-		return PromptInput{}, err
+		return AdvisorInput{}, err
+	}
+	settings, err := s.repo.GetAdvisorSettings(ctx)
+	if err != nil {
+		return AdvisorInput{}, err
 	}
 
-	goldPoints := make([]PriceHistoryPoint, 0, len(goldPrices))
-	for i := len(goldPrices) - 1; i >= 0; i-- {
-		goldPoints = append(goldPoints, PriceHistoryPoint{
-			Date:         goldPrices[i].PriceDate,
-			PricePerGram: goldPrices[i].PricePerGram24k,
-		})
+	gold := make([]PriceHistoryPoint, 0, len(goldPrices))
+	for _, p := range goldPrices {
+		gold = append(gold, PriceHistoryPoint{Date: p.PriceDate, PricePerGram: p.PricePerGram24k})
 	}
-	silverPoints := make([]PriceHistoryPoint, 0, len(silverPrices))
-	for i := len(silverPrices) - 1; i >= 0; i-- {
-		silverPoints = append(silverPoints, PriceHistoryPoint{
-			Date:         silverPrices[i].PriceDate,
-			PricePerGram: silverPrices[i].PricePerGram999,
-		})
+	silver := make([]PriceHistoryPoint, 0, len(silverPrices))
+	for _, p := range silverPrices {
+		silver = append(silver, PriceHistoryPoint{Date: p.PriceDate, PricePerGram: p.PricePerGram999})
 	}
+	gold, silver = sortedOldestFirst(gold), sortedOldestFirst(silver)
 
-	holdings := aggregateHoldings(portfolio.Items)
-
-	metals := []MetalData{{
-		Metal:    model.MetalGold,
-		Prices:   goldPoints,
-		Holdings: holdings[model.MetalGold],
+	positions := computePositions(portfolio.Items, settings)
+	states := []MetalState{{
+		Metal: model.MetalGold, Prices: gold,
+		Indicators: computeIndicators(gold), Position: positions[model.MetalGold],
 	}}
-	if len(silverPoints) > 0 || len(holdings[model.MetalSilver]) > 0 {
-		metals = append(metals, MetalData{
-			Metal:    model.MetalSilver,
-			Prices:   silverPoints,
-			Holdings: holdings[model.MetalSilver],
+	if len(silver) > 0 || positions[model.MetalSilver].Held {
+		states = append(states, MetalState{
+			Metal: model.MetalSilver, Prices: silver,
+			Indicators: computeIndicators(silver), Position: positions[model.MetalSilver],
 		})
 	}
 
-	return PromptInput{
-		Metals:           metals,
-		TotalPaid:        portfolio.Totals.TotalPaid,
-		TotalValue:       portfolio.Totals.TotalValue,
-		TotalGainLossPct: portfolio.Totals.TotalGainLossPct,
+	now := s.now()
+	spent := spentThisMonth(portfolio.Items, now.Format("2006-01"))
+	budget := Budget{
+		Monthly:   settings.MonthlyBudgetBHD,
+		Spent:     spent,
+		Remaining: math.Max(0, settings.MonthlyBudgetBHD-spent),
+		Reserve:   settings.ReserveBHD,
+	}
+	ratio := computeRatio(gold, silver)
+	computeBaselines(states, settings, budget, ratio)
+
+	return AdvisorInput{
+		Today:    now.Format("2006-01-02"),
+		Metals:   states,
+		Ratio:    ratio,
+		Budget:   budget,
+		Settings: settings,
+		News:     settings.NewsEnabled,
 	}, nil
-}
-
-// aggregateHoldings groups items by metal and purity, preserving the
-// order each purity was first seen so the prompt is stable across runs.
-func aggregateHoldings(items []model.PortfolioItem) map[string][]HoldingsAggregate {
-	type key struct {
-		metal  string
-		purity string
-	}
-	byKey := map[key]*HoldingsAggregate{}
-	order := map[string][]key{}
-
-	for _, item := range items {
-		metal := item.MetalType
-		if metal == "" {
-			metal = model.MetalGold
-		}
-		k := key{metal: metal, purity: purityLabel(metal, item)}
-
-		agg, ok := byKey[k]
-		if !ok {
-			agg = &HoldingsAggregate{PurityLabel: k.purity}
-			byKey[k] = agg
-			order[metal] = append(order[metal], k)
-		}
-		agg.TotalWeightGrams += item.WeightGrams
-		agg.TotalPaid += item.PricePaidTotal
-	}
-
-	out := map[string][]HoldingsAggregate{}
-	for metal, keys := range order {
-		for _, k := range keys {
-			agg := byKey[k]
-			if agg.TotalWeightGrams > 0 {
-				agg.AvgPricePerGram = agg.TotalPaid / agg.TotalWeightGrams
-			}
-			out[metal] = append(out[metal], *agg)
-		}
-	}
-	return out
-}
-
-// purityLabel writes a purity the way its metal is traded: gold in
-// karat, silver in millesimal fineness, which is the only notation
-// silver has.
-func purityLabel(metal string, item model.PortfolioItem) string {
-	if metal == model.MetalSilver {
-		if item.PurityFineness == nil {
-			return "unmarked"
-		}
-		return fmt.Sprintf("%.0f", *item.PurityFineness)
-	}
-	if item.PurityKarat == nil {
-		return "unmarked"
-	}
-	return fmt.Sprintf("%.0fK", *item.PurityKarat)
 }
 
 // MaybeAutoGenerate starts a background run if AI is enabled, nothing

@@ -21,11 +21,11 @@ func TestLoadConfigFromEnvDefaults(t *testing.T) {
 	if cfg.Enabled {
 		t.Errorf("Enabled = true, want false when AI_ENABLED and the token are unset")
 	}
-	if cfg.Model != "claude-opus-5" {
-		t.Errorf("Model = %q, want default claude-opus-5", cfg.Model)
+	if cfg.Model != "claude-opus-5-5" {
+		t.Errorf("Model = %q, want default claude-opus-5-5", cfg.Model)
 	}
-	if cfg.Timeout != 180*time.Second {
-		t.Errorf("Timeout = %v, want default 180s", cfg.Timeout)
+	if cfg.Timeout != 420*time.Second {
+		t.Errorf("Timeout = %v, want default 420s", cfg.Timeout)
 	}
 	if cfg.AutoMinHours != 24 {
 		t.Errorf("AutoMinHours = %v, want default 24", cfg.AutoMinHours)
@@ -81,7 +81,7 @@ func TestLoadConfigIgnoresUnparseableNumbers(t *testing.T) {
 	t.Setenv("AI_AUTO_MIN_HOURS", "also-not-a-number")
 
 	cfg := LoadConfigFromEnv()
-	if cfg.Timeout != 180*time.Second {
+	if cfg.Timeout != 420*time.Second {
 		t.Errorf("Timeout = %v, want the 180s default to survive a bad value", cfg.Timeout)
 	}
 	if cfg.AutoMinHours != 24 {

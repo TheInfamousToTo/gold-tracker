@@ -26,6 +26,8 @@ import (
 	"math"
 	"testing"
 	"time"
+
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/model"
 )
 
 // series builds a daily price series from a starting price and a
@@ -46,77 +48,57 @@ func series(start, driftPct float64, days int) []PriceHistoryPoint {
 	return points
 }
 
-func goldInput(prices []PriceHistoryPoint) PromptInput {
-	return PromptInput{
-		Metals: []MetalData{{
-			Metal:  "gold",
-			Prices: prices,
-			Holdings: []HoldingsAggregate{
-				{PurityLabel: "21K", TotalWeightGrams: 50, TotalPaid: 1400, AvgPricePerGram: 28},
-			},
-		}},
-		TotalPaid:        1400,
-		TotalValue:       1500,
-		TotalGainLossPct: 7.14,
-	}
+// goldInput runs the series through the same quant and rules the
+// service uses, holding 50 g of 24K bought at 28 BHD/g, with a 100 BHD
+// monthly budget and news off so the probe judges the data alone.
+func goldInput(prices []PriceHistoryPoint) AdvisorInput {
+	settings := model.DefaultAdvisorSettings()
+	settings.MonthlyBudgetBHD = 100
+	settings.NewsEnabled = false
+	ind := computeIndicators(prices)
+	value := 50 * ind.Latest
+	pos := Position{Held: true, FineGrams: 50, Paid: 1400, Value: value, NetValue: value * 0.99,
+		NetPLPct: (value*0.99/1400 - 1) * 100, Share: 1}
+	states := []MetalState{{Metal: "gold", Prices: prices, Indicators: ind, Position: pos}}
+	b := Budget{Monthly: 100, Remaining: 100}
+	computeBaselines(states, settings, b, RatioStats{})
+	return AdvisorInput{Today: prices[len(prices)-1].Date, Metals: states, Budget: b, Settings: settings}
 }
 
 func TestProbeSignalSpread(t *testing.T) {
 	scenarios := []struct {
 		name   string
-		input  PromptInput
-		expect string // what a competent analyst should say; not asserted
+		input  AdvisorInput
+		expect string // what a competent advisor should say; not asserted
 	}{
-		{
-			name:   "sustained rally, price far above entry",
-			input:  goldInput(series(28, 0.9, 90)),
-			expect: "SELL or HOLD",
-		},
-		{
-			name:   "sustained slide, price far below entry",
-			input:  goldInput(series(45, -0.8, 90)),
-			expect: "BUY",
-		},
-		{
-			name:   "flat drift",
-			input:  goldInput(series(32, 0.01, 90)),
-			expect: "HOLD",
-		},
-		{
-			name:   "sparse history",
-			input:  goldInput(series(32, 0.5, 6)),
-			expect: "HOLD, low confidence",
-		},
-		{
-			name:   "sharp recent crash after a long rise",
-			input:  goldInput(append(series(28, 0.6, 75), series(42, -3.0, 12)...)),
-			expect: "BUY or SELL, not a shrug",
-		},
+		{"sustained rally, price far above entry", goldInput(series(28, 0.3, 400)), "small BUY, or SELL (trim)"},
+		{"sustained slide below entry, trend broken", goldInput(series(45, -0.15, 400)), "CUT_LOSS or BUY"},
+		{"flat drift", goldInput(series(32, 0.005, 400)), "BUY at 1x"},
+		{"sparse history", goldInput(series(32, 0.5, 20)), "low confidence"},
+		{"sharp recent crash after a long rise", goldInput(append(series(28, 0.2, 380), series(60, -2.0, 20)...)), "BUY extra"},
 	}
 
-	runner := &CLIRunner{Timeout: 3 * time.Minute}
+	runner := &CLIRunner{Timeout: 5 * time.Minute}
 	seen := map[string]int{}
 
 	for _, sc := range scenarios {
 		t.Run(sc.name, func(t *testing.T) {
-			prompt := BuildPrompt(sc.input)
-			result, err := runner.Run(context.Background(), prompt, "claude-opus-5")
+			result, err := runner.Run(context.Background(), BuildAnalysisPrompt(sc.input), "claude-opus-5-5", nil)
 			if err != nil {
 				t.Fatalf("runner: %v", err)
 			}
 			if result.IsError {
 				t.Fatalf("CLI reported an error: %s", result.Result)
 			}
-
-			verdicts, err := ParseVerdicts(result.Result, []string{"gold"})
+			advice, err := ParseAnalysis(result.Result, []string{"gold"})
 			if err != nil {
 				t.Fatalf("parse: %v\nraw: %s", err, result.Result)
 			}
-			v := verdicts["gold"]
-			seen[v.Signal]++
-
-			fmt.Printf("\n--- %s\n    expected roughly: %s\n    got: %s (confidence %.2f)\n    %s\n",
-				sc.name, sc.expect, v.Signal, v.Confidence, v.Reasoning)
+			a := advice["gold"]
+			seen[a.Action]++
+			b := sc.input.Metals[0].Baseline
+			fmt.Printf("\n--- %s\n    expected roughly: %s\n    rules: %s %.2f\n    got: %s %.2f (confidence %.2f)\n    %s\n",
+				sc.name, sc.expect, b.Action, b.AmountBHD, a.Action, a.AmountBHD, a.Confidence, a.Reasoning)
 		})
 	}
 
@@ -125,8 +107,44 @@ func TestProbeSignalSpread(t *testing.T) {
 	// The narrow question this probe exists to answer. One verdict for
 	// every scenario means the prompt, not the market, is deciding.
 	if len(seen) == 1 {
-		for signal := range seen {
-			t.Errorf("every scenario returned %s — the model is not discriminating between them", signal)
+		for action := range seen {
+			t.Errorf("every scenario returned %s — the model is not discriminating between them", action)
 		}
+	}
+}
+
+// TestProbeNewsRun makes one real analysis with the news tools on, to
+// prove the CLI accepts the tool flags, the model actually searches,
+// and the answer parses with linked news.
+//
+//	go test -tags aiprobe ./internal/ai/ -run TestProbeNewsRun -v -timeout 10m
+func TestProbeNewsRun(t *testing.T) {
+	in := goldInput(series(32, 0.05, 400))
+	in.News = true
+	in.Settings.NewsEnabled = true
+	// The synthetic series runs past today; the news search must not.
+	in.Today = time.Now().Format("2006-01-02")
+
+	start := time.Now()
+	result, err := (&CLIRunner{Timeout: 7 * time.Minute}).Run(context.Background(),
+		BuildAnalysisPrompt(in), "claude-opus-5-5", NewsTools)
+	if err != nil {
+		t.Fatalf("runner: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("CLI reported an error: %s", result.Result)
+	}
+	advice, err := ParseAnalysis(result.Result, []string{"gold"})
+	if err != nil {
+		t.Fatalf("parse: %v\nraw: %s", err, result.Result)
+	}
+	a := advice["gold"]
+	fmt.Printf("\n%s in %s: %s %.2f BHD (confidence %.2f)\n%s\nfactors: %v\n",
+		"news run", time.Since(start).Round(time.Second), a.Action, a.AmountBHD, a.Confidence, a.Reasoning, a.KeyFactors)
+	for _, n := range a.News {
+		fmt.Printf("  [%s] %s — %s %s\n      %s\n", n.Impact, n.Title, n.Source, n.Date, n.URL)
+	}
+	if len(a.News) == 0 {
+		t.Error("news run returned no linked news")
 	}
 }
