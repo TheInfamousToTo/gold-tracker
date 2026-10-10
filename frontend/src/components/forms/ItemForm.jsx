@@ -49,15 +49,19 @@ function toPayload(form) {
   };
 }
 
-export function ItemForm({ editingItem, onSaved, onCancelEdit }) {
-  const [form, setForm] = useState(() => toFormState(editingItem));
+/**
+ * `draft` pre-fills a NEW purchase (from an advisor recommendation the
+ * owner says they acted on); `editingItem` edits an existing one.
+ */
+export function ItemForm({ editingItem, draft, onSaved, onCancelEdit }) {
+  const [form, setForm] = useState(() => (editingItem ? toFormState(editingItem) : draft || EMPTY));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    setForm(toFormState(editingItem));
+    setForm(editingItem ? toFormState(editingItem) : draft || EMPTY);
     setError(null);
-  }, [editingItem]);
+  }, [editingItem, draft]);
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 

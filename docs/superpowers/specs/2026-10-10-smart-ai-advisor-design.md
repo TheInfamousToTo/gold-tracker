@@ -180,7 +180,7 @@ Rollback: `docs/ops/rollback-0003-smart-advisor.sql`.
 ## UI
 
 - **Advisor settings** card on the Market tab.
-- **Signal card**: action badge (CUT_LOSS darker than SELL), amount in
+- **Signal card**: action badge (BUY green, SELL amber, CUT_LOSS red, HOLD colourless), amount in
   BHD and grams, confidence, trigger levels, key factors, news links
   (open in a new tab, `rel="noreferrer"`), a "differs from rules" stamp.
 - **Review my plan**: textarea + Review button; the review card shows

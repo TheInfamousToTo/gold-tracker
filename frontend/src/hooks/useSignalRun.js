@@ -49,23 +49,39 @@ export function useSignalRun(onGenerated) {
     }, POLL_INTERVAL_MS);
   }, [fetchStatus, stopPolling]);
 
-  const generate = useCallback(async () => {
-    setError(null);
-    try {
-      await apiRequest('/api/signals/generate', { method: 'POST' });
-      setGenerating(true);
-      startPolling();
-    } catch (err) {
-      // A run already in flight isn't a failure — attach to it. Any
-      // other error (429 cooling down, 503 not configured) is shown.
-      if (err instanceof ApiError && err.status === 409) {
+  // Analyse and Review share one server-side slot, so both start the
+  // same way and settle through the same status poll.
+  const start = useCallback(
+    async (url, body) => {
+      setError(null);
+      try {
+        await apiRequest(url, {
+          method: 'POST',
+          ...(body && {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          }),
+        });
         setGenerating(true);
         startPolling();
-        return;
+        return true;
+      } catch (err) {
+        // A run already in flight isn't a failure — attach to it. Any
+        // other error (429 cooling down, 503 not configured) is shown.
+        if (err instanceof ApiError && err.status === 409) {
+          setGenerating(true);
+          startPolling();
+          return false;
+        }
+        setError(err.message);
+        return false;
       }
-      setError(err.message);
-    }
-  }, [startPolling]);
+    },
+    [startPolling],
+  );
+
+  const generate = useCallback(() => start('/api/signals/generate'), [start]);
+  const review = useCallback((plan) => start('/api/signals/review', { plan }), [start]);
 
   useEffect(() => {
     // A run started elsewhere, or before a reload, should still be
@@ -79,5 +95,5 @@ export function useSignalRun(onGenerated) {
     return stopPolling;
   }, [fetchStatus, startPolling, stopPolling]);
 
-  return { status, generating, error, generate };
+  return { status, generating, error, generate, review };
 }
