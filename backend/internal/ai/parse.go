@@ -3,113 +3,182 @@ package ai
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
+
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/model"
 )
 
-// Verdict is the recommendation the model is asked to produce.
-type Verdict struct {
-	Signal      string   `json:"signal"`
-	Confidence  float64  `json:"confidence"`
-	Reasoning   string   `json:"reasoning"`
-	HorizonDays int      `json:"horizon_days"`
-	KeyFactors  []string `json:"key_factors"`
+// Advice is the model's verdict for one metal.
+type Advice struct {
+	Action      string           `json:"action"`
+	AmountBHD   float64          `json:"amount_bhd"`
+	Confidence  float64          `json:"confidence"`
+	Reasoning   string           `json:"reasoning"`
+	HorizonDays int              `json:"horizon_days"`
+	KeyFactors  []string         `json:"key_factors"`
+	News        []model.NewsItem `json:"news"`
 }
 
-// maxReasoningLen is what the UI can show without the card turning
-// into an essay. The prompt asks for 320 characters; anything longer is
-// trimmed at a sentence boundary rather than rejected, since a rerun
-// costs twenty seconds and a slice of shared subscription quota.
-const maxReasoningLen = 420
+// Review is the model's answer to a plan the owner typed.
+type Review struct {
+	Verdict    string           `json:"verdict"`
+	Confidence float64          `json:"confidence"`
+	Reasoning  string           `json:"reasoning"`
+	KeyFactors []string         `json:"key_factors"`
+	News       []model.NewsItem `json:"news"`
+	Suggested  *Suggestion      `json:"suggested"`
+}
+
+// Suggestion is what a review recommends doing instead, or as well.
+type Suggestion struct {
+	Metal     string  `json:"metal"`
+	Action    string  `json:"action"`
+	AmountBHD float64 `json:"amount_bhd"`
+}
+
+const (
+	VerdictGood   = "GOOD_IDEA"
+	VerdictAdjust = "ADJUST"
+	VerdictBad    = "BAD_IDEA"
+)
+
+// maxReasoningLen is what a card can show without turning into an
+// essay. The prompt asks for 450; anything longer is trimmed at a
+// sentence boundary rather than rejected, since a rerun costs minutes
+// and a slice of shared subscription quota.
+const maxReasoningLen = 600
 
 // absurdReasoningLen is the point at which the response is treated as
 // broken rather than merely verbose.
 const absurdReasoningLen = 8000
 
-var validSignals = map[string]bool{"BUY": true, "SELL": true, "HOLD": true}
+const maxNews = 5
 
-// ParseVerdicts extracts the first balanced JSON object from raw and
-// validates a verdict for each metal named in metals.
+var validActions = map[string]bool{ActionBuy: true, ActionHold: true, ActionSell: true, ActionCutLoss: true}
+var validVerdicts = map[string]bool{VerdictGood: true, VerdictAdjust: true, VerdictBad: true}
+var validImpacts = map[string]bool{"bullish": true, "bearish": true, "neutral": true}
+
+// ParseAnalysis extracts the first balanced JSON object from raw and
+// validates an Advice for every metal named. Each metal must appear as
+// its own key: gold and silver are separate markets, and a run that
+// answered for one cannot be silently applied to the other.
 //
-// Two response shapes are accepted. A flat object carrying a "signal"
-// key is the single-metal answer, and is only valid when one metal was
-// asked about. Otherwise each metal must appear as a key of its own,
-// because gold and silver are separate markets and a run that returned
-// one verdict for both would be silently wrong for whichever metal it
-// did not actually judge.
-func ParseVerdicts(raw string, metals []string) (map[string]Verdict, error) {
-	jsonStr, err := extractFirstJSONObject(raw)
+// Headless CLI invocation has no equivalent of the API's structured
+// output, so the schema is enforced here. The enum checks also mean a
+// prompt injection that survives into the output — from a web page the
+// model read, say — still cannot produce an arbitrary action.
+func ParseAnalysis(raw string, metals []string) (map[string]Advice, error) {
+	fields, err := objectFields(raw)
 	if err != nil {
 		return nil, err
 	}
-
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(jsonStr), &fields); err != nil {
-		return nil, fmt.Errorf("verdict is not valid JSON: %w", err)
-	}
-
-	if _, flat := fields["signal"]; flat {
-		if len(metals) != 1 {
-			return nil, fmt.Errorf("expected a verdict per metal (%s), got a single flat verdict",
-				strings.Join(metals, ", "))
-		}
-		v, err := validateVerdict([]byte(jsonStr))
-		if err != nil {
-			return nil, err
-		}
-		return map[string]Verdict{metals[0]: v}, nil
-	}
-
-	verdicts := make(map[string]Verdict, len(metals))
+	out := make(map[string]Advice, len(metals))
 	for _, metal := range metals {
 		body, ok := fields[metal]
 		if !ok {
 			return nil, fmt.Errorf("response has no verdict for %s", metal)
 		}
-		v, err := validateVerdict(body)
-		if err != nil {
+		var a Advice
+		if err := json.Unmarshal(body, &a); err != nil {
+			return nil, fmt.Errorf("%s: verdict is not valid JSON: %w", metal, err)
+		}
+		if !validActions[a.Action] {
+			return nil, fmt.Errorf("%s: action %q is not one of BUY, HOLD, SELL, CUT_LOSS", metal, a.Action)
+		}
+		if err := checkCommon(&a.Confidence, &a.Reasoning, &a.KeyFactors, &a.News); err != nil {
 			return nil, fmt.Errorf("%s: %w", metal, err)
 		}
-		verdicts[metal] = v
+		if a.AmountBHD < 0 {
+			a.AmountBHD = 0
+		}
+		out[metal] = a
 	}
-	return verdicts, nil
+	return out, nil
 }
 
-// ParseVerdict validates a single flat verdict object.
-//
-// Headless CLI invocation has no equivalent of the API's
-// output_config.format, so the schema is enforced here instead. The
-// enum check also means a prompt injection that survives into the
-// model's output still cannot produce an arbitrary signal type.
-func ParseVerdict(raw string) (Verdict, error) {
+// ParseReview validates a plan review.
+func ParseReview(raw string) (Review, error) {
 	jsonStr, err := extractFirstJSONObject(raw)
 	if err != nil {
-		return Verdict{}, err
+		return Review{}, err
 	}
-	return validateVerdict([]byte(jsonStr))
+	var r Review
+	if err := json.Unmarshal([]byte(jsonStr), &r); err != nil {
+		return Review{}, fmt.Errorf("review is not valid JSON: %w", err)
+	}
+	if !validVerdicts[r.Verdict] {
+		return Review{}, fmt.Errorf("verdict %q is not one of GOOD_IDEA, ADJUST, BAD_IDEA", r.Verdict)
+	}
+	if err := checkCommon(&r.Confidence, &r.Reasoning, &r.KeyFactors, &r.News); err != nil {
+		return Review{}, err
+	}
+	if s := r.Suggested; s != nil {
+		if !model.IsKnownMetal(s.Metal) || !validActions[s.Action] {
+			// A malformed suggestion does not sink an otherwise good
+			// review; it is dropped and the verdict stands.
+			r.Suggested = nil
+		} else if s.AmountBHD < 0 {
+			s.AmountBHD = 0
+		}
+	}
+	return r, nil
 }
 
-func validateVerdict(jsonStr []byte) (Verdict, error) {
-	var v Verdict
-	if err := json.Unmarshal(jsonStr, &v); err != nil {
-		return Verdict{}, fmt.Errorf("verdict is not valid JSON: %w", err)
+func objectFields(raw string) (map[string]json.RawMessage, error) {
+	jsonStr, err := extractFirstJSONObject(raw)
+	if err != nil {
+		return nil, err
 	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(jsonStr), &fields); err != nil {
+		return nil, fmt.Errorf("response is not valid JSON: %w", err)
+	}
+	return fields, nil
+}
 
-	if !validSignals[v.Signal] {
-		return Verdict{}, fmt.Errorf("signal %q is not one of BUY, SELL, HOLD", v.Signal)
+func checkCommon(confidence *float64, reasoning *string, factors *[]string, news *[]model.NewsItem) error {
+	if *confidence < 0 || *confidence > 1 {
+		return fmt.Errorf("confidence %v is not in [0,1]", *confidence)
 	}
-	if v.Confidence < 0 || v.Confidence > 1 {
-		return Verdict{}, fmt.Errorf("confidence %v is not in [0,1]", v.Confidence)
+	if strings.TrimSpace(*reasoning) == "" {
+		return fmt.Errorf("reasoning is empty")
 	}
-	if strings.TrimSpace(v.Reasoning) == "" {
-		return Verdict{}, fmt.Errorf("reasoning is empty")
+	if len(*reasoning) > absurdReasoningLen {
+		return fmt.Errorf("reasoning is %d chars, over the %d char limit", len(*reasoning), absurdReasoningLen)
 	}
-	if len(v.Reasoning) > absurdReasoningLen {
-		return Verdict{}, fmt.Errorf("reasoning is %d chars, over the %d char limit", len(v.Reasoning), absurdReasoningLen)
-	}
-	v.Reasoning = trimToLength(v.Reasoning, maxReasoningLen)
-	v.KeyFactors = trimFactors(v.KeyFactors)
+	*reasoning = trimToLength(*reasoning, maxReasoningLen)
+	*factors = trimFactors(*factors)
+	*news = cleanNews(*news)
+	return nil
+}
 
-	return v, nil
+// cleanNews keeps at most maxNews items, and only those whose URL is a
+// real http(s) link: a citation nobody can open is not evidence.
+func cleanNews(items []model.NewsItem) []model.NewsItem {
+	out := make([]model.NewsItem, 0, len(items))
+	for _, n := range items {
+		u, err := url.Parse(strings.TrimSpace(n.URL))
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			continue
+		}
+		n.URL = u.String()
+		n.Title = trimToLength(n.Title, 160)
+		n.Source = trimToLength(n.Source, 60)
+		n.Date = trimToLength(n.Date, 10)
+		n.Impact = strings.ToLower(strings.TrimSpace(n.Impact))
+		if !validImpacts[n.Impact] {
+			n.Impact = "neutral"
+		}
+		if n.Title == "" {
+			continue
+		}
+		out = append(out, n)
+		if len(out) == maxNews {
+			break
+		}
+	}
+	return out
 }
 
 // trimToLength shortens s to at most limit characters, preferring to

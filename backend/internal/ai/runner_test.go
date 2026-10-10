@@ -20,7 +20,7 @@ func TestCLIRunnerSuccess(t *testing.T) {
 	r := &CLIRunner{Timeout: 90 * time.Second}
 	result, err := r.Run(context.Background(),
 		`Reply with only this exact JSON, nothing else: {"ok":true}`,
-		"claude-opus-5")
+		"claude-opus-5-5", nil)
 	if err != nil {
 		t.Fatalf("unexpected transport error: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestCLIRunnerSuccess(t *testing.T) {
 func TestCLIRunnerInvalidModelReportsIsError(t *testing.T) {
 	requireCLI(t)
 	r := &CLIRunner{Timeout: 60 * time.Second}
-	result, err := r.Run(context.Background(), "hi", "not-a-real-model")
+	result, err := r.Run(context.Background(), "hi", "not-a-real-model", nil)
 	// The CLI still writes a parseable JSON envelope on this failure
 	// mode, so it is a reported error, not a transport failure.
 	if err != nil {
@@ -52,7 +52,7 @@ func TestCLIRunnerInvalidModelReportsIsError(t *testing.T) {
 func TestCLIRunnerTimeout(t *testing.T) {
 	requireCLI(t)
 	r := &CLIRunner{Timeout: 1 * time.Millisecond}
-	_, err := r.Run(context.Background(), "hi", "claude-opus-5")
+	_, err := r.Run(context.Background(), "hi", "claude-opus-5-5", nil)
 	if err == nil {
 		t.Fatal("expected a timeout error")
 	}
@@ -67,15 +67,30 @@ func TestCLIRunnerHonorsCallerCancellation(t *testing.T) {
 	cancel()
 
 	r := &CLIRunner{Timeout: 90 * time.Second}
-	if _, err := r.Run(ctx, "hi", "claude-opus-5"); err == nil {
+	if _, err := r.Run(ctx, "hi", "claude-opus-5-5", nil); err == nil {
 		t.Fatal("expected an error when the caller's context is already cancelled")
 	}
 }
 
 func TestCLIRunnerMissingBinaryIsTransportError(t *testing.T) {
 	r := &CLIRunner{Timeout: 5 * time.Second, binary: "definitely-not-a-real-binary-xyz"}
-	_, err := r.Run(context.Background(), "hi", "claude-opus-5")
+	_, err := r.Run(context.Background(), "hi", "claude-opus-5-5", nil)
 	if err == nil {
 		t.Fatal("expected an error when the CLI binary is missing")
+	}
+}
+
+func TestCLIArgsLimitsToolsToTheList(t *testing.T) {
+	args := strings.Join(cliArgs("p", "m", NewsTools), " ")
+	for _, want := range []string{"--tools WebSearch,WebFetch", "--allowedTools WebSearch,WebFetch", "--strict-mcp-config", "--model m"} {
+		if !strings.Contains(args, want) {
+			t.Errorf("args %q missing %q", args, want)
+		}
+	}
+	none := cliArgs("p", "m", nil)
+	for i, a := range none {
+		if a == "--tools" && none[i+1] != "" {
+			t.Errorf("no-tools run passed --tools %q, want empty", none[i+1])
+		}
 	}
 }

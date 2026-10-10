@@ -314,3 +314,67 @@ func (h *Handler) GenerateSignal(c *gin.Context) {
 func (h *Handler) SignalStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, h.AI.GetStatus())
 }
+
+// ReviewPlan starts a review of a plan the owner typed ("I'm buying
+// 20 g of gold today") and returns immediately; like GenerateSignal,
+// the client polls SignalStatus. It shares the single-flight slot and
+// the manual cooldown with Analyse, since both spend the same quota.
+func (h *Handler) ReviewPlan(c *gin.Context) {
+	if !h.AI.Enabled() {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "AI is not configured"})
+		return
+	}
+	var body struct {
+		Plan string `json:"plan"`
+	}
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(body.Plan) > 2000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "plan is too long; keep it under 500 characters"})
+		return
+	}
+	if err := h.AI.StartReview(body.Plan); err != nil {
+		status := http.StatusConflict
+		switch {
+		case errors.Is(err, ai.ErrCoolingDown):
+			status = http.StatusTooManyRequests
+		case errors.Is(err, ai.ErrEmptyPlan):
+			status = http.StatusBadRequest
+		}
+		c.JSON(status, gin.H{"error": err.Error()})
+		return
+	}
+	go h.AI.RunReview(context.Background(), body.Plan)
+	c.JSON(http.StatusAccepted, gin.H{"status": "started"})
+}
+
+// Advisor settings: the budget, split, spreads and stop the advisor
+// sizes against.
+func (h *Handler) GetAdvisorSettings(c *gin.Context) {
+	s, err := h.Repo.GetAdvisorSettings(c.Request.Context())
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, s)
+}
+
+func (h *Handler) UpdateAdvisorSettings(c *gin.Context) {
+	var s model.AdvisorSettings
+	if err := c.ShouldBindJSON(&s); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := s.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	saved, err := h.Repo.UpdateAdvisorSettings(c.Request.Context(), s)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, saved)
+}

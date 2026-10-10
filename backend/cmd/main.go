@@ -78,6 +78,10 @@ func main() {
 		apiGroup.GET("/signals", h.GetSignals)
 		apiGroup.POST("/signals/generate", h.GenerateSignal)
 		apiGroup.GET("/signals/status", h.SignalStatus)
+		apiGroup.POST("/signals/review", h.ReviewPlan)
+
+		apiGroup.GET("/ai/settings", h.GetAdvisorSettings)
+		apiGroup.PUT("/ai/settings", h.UpdateAdvisorSettings)
 	}
 
 	fmt.Printf("Gold Tracker Go API listening on port %s\n", port)

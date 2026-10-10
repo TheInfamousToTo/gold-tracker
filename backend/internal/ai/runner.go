@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -23,8 +24,12 @@ type RunResult struct {
 // service depends on this interface so its tests never spawn a real
 // process.
 type Runner interface {
-	Run(ctx context.Context, prompt string, model string) (RunResult, error)
+	Run(ctx context.Context, prompt string, model string, tools []string) (RunResult, error)
 }
+
+// NewsTools are the only tools a run may be given: the model can read
+// the web and nothing else — no shell, no filesystem.
+var NewsTools = []string{"WebSearch", "WebFetch"}
 
 // CLIRunner spawns the Claude Code CLI in headless mode. Authentication
 // comes from CLAUDE_CODE_OAUTH_TOKEN in the inherited process
@@ -46,7 +51,23 @@ type cliEnvelope struct {
 	Subtype string `json:"subtype"`
 }
 
-func (c *CLIRunner) Run(ctx context.Context, prompt string, model string) (RunResult, error) {
+// cliArgs builds the headless invocation. --tools sets which built-in
+// tools exist at all, --allowedTools pre-approves them (there is nobody
+// to answer a permission prompt), and --strict-mcp-config keeps any MCP
+// server a config file might name out of the run.
+func cliArgs(prompt, model string, tools []string) []string {
+	list := strings.Join(tools, ",")
+	return []string{
+		"-p", prompt,
+		"--output-format", "json",
+		"--model", model,
+		"--tools", list,
+		"--allowedTools", list,
+		"--strict-mcp-config",
+	}
+}
+
+func (c *CLIRunner) Run(ctx context.Context, prompt string, model string, tools []string) (RunResult, error) {
 	binary := c.binary
 	if binary == "" {
 		binary = "claude"
@@ -55,14 +76,7 @@ func (c *CLIRunner) Run(ctx context.Context, prompt string, model string) (RunRe
 	runCtx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(runCtx, binary,
-		"-p", prompt,
-		"--output-format", "json",
-		"--model", model,
-		// The analysis needs no tools; denying them keeps the run to a
-		// single turn and stops it touching the filesystem.
-		"--allowedTools", "",
-	)
+	cmd := exec.CommandContext(runCtx, binary, cliArgs(prompt, model, tools)...)
 	cmd.Stdin = nil
 
 	var stdout, stderr bytes.Buffer

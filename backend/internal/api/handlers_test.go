@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,10 @@ func (stubRepo) GetPortfolioSummary(ctx context.Context) (model.PortfolioSummary
 	return model.PortfolioSummary{}, nil
 }
 
+func (stubRepo) GetAdvisorSettings(ctx context.Context) (model.AdvisorSettings, error) {
+	return model.DefaultAdvisorSettings(), nil
+}
+
 func (stubRepo) CreateSignal(ctx context.Context, s model.SignalLog) (model.SignalLog, error) {
 	return s, nil
 }
@@ -38,18 +43,18 @@ func (stubRepo) GetLatestSignal(ctx context.Context, source string) (*model.Sign
 // blockingRunner holds a run open so a test can observe the in-flight state.
 type blockingRunner struct{ release chan struct{} }
 
-func (b *blockingRunner) Run(ctx context.Context, prompt, model string) (ai.RunResult, error) {
+func (b *blockingRunner) Run(ctx context.Context, prompt, model string, tools []string) (ai.RunResult, error) {
 	<-b.release
-	return ai.RunResult{Result: `{"signal":"HOLD","confidence":0.5,"reasoning":"x","horizon_days":30,"key_factors":[]}`}, nil
+	return ai.RunResult{Result: `{"gold":{"action":"HOLD","amount_bhd":0,"confidence":0.5,"reasoning":"x","horizon_days":30,"key_factors":[],"news":[]}}`}, nil
 }
 
 func newTestHandler(enabled bool, runner ai.Runner) *Handler {
-	cfg := ai.Config{Enabled: enabled, Model: "claude-opus-5", Timeout: 5 * time.Second, AutoMinHours: 24}
+	cfg := ai.Config{Enabled: enabled, Model: "claude-opus-5-5", Timeout: 5 * time.Second, AutoMinHours: 24}
 	return &Handler{AI: ai.NewService(stubRepo{}, runner, cfg)}
 }
 
 func newTestHandlerWithCooldown(cooldown time.Duration, runner ai.Runner) *Handler {
-	cfg := ai.Config{Enabled: true, Model: "claude-opus-5", Timeout: 5 * time.Second, AutoMinHours: 24, ManualCooldown: cooldown}
+	cfg := ai.Config{Enabled: true, Model: "claude-opus-5-5", Timeout: 5 * time.Second, AutoMinHours: 24, ManualCooldown: cooldown}
 	return &Handler{AI: ai.NewService(stubRepo{}, runner, cfg)}
 }
 
@@ -169,8 +174,8 @@ func TestGenerateSignalReturns429DuringCooldown(t *testing.T) {
 
 type instantRunner struct{}
 
-func (instantRunner) Run(ctx context.Context, prompt, model string) (ai.RunResult, error) {
-	return ai.RunResult{Result: `{"signal":"HOLD","confidence":0.5,"reasoning":"x","horizon_days":30,"key_factors":[]}`}, nil
+func (instantRunner) Run(ctx context.Context, prompt, model string, tools []string) (ai.RunResult, error) {
+	return ai.RunResult{Result: `{"gold":{"action":"HOLD","amount_bhd":0,"confidence":0.5,"reasoning":"x","horizon_days":30,"key_factors":[],"news":[]}}`}, nil
 }
 
 func floatPtr(v float64) *float64 { return &v }
@@ -276,4 +281,43 @@ func TestPriceLimit(t *testing.T) {
 			t.Errorf("priceLimit(%q) = %d, want %d", raw, got, want)
 		}
 	}
+}
+
+func TestReviewPlanRejectsAnEmptyPlan(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := newTestHandler(true, &blockingRunner{release: make(chan struct{})})
+	r := gin.New()
+	r.POST("/api/signals/review", h.ReviewPlan)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/signals/review", strings.NewReader(`{"plan":"   "}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", w.Code)
+	}
+	if h.AI.GetStatus().Running {
+		t.Fatal("an empty plan must not claim the run slot")
+	}
+}
+
+func TestReviewPlanStartsAReviewRun(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	runner := &blockingRunner{release: make(chan struct{})}
+	h := newTestHandler(true, runner)
+	r := gin.New()
+	r.POST("/api/signals/review", h.ReviewPlan)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/signals/review", strings.NewReader(`{"plan":"buy 10 BHD of gold"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want 202", w.Code)
+	}
+	if st := h.AI.GetStatus(); !st.Running || st.Kind != model.SignalKindReview {
+		t.Fatalf("status = %+v, want a running review", st)
+	}
+	close(runner.release)
+	waitUntilIdle(t, h)
 }

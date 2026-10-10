@@ -7,8 +7,8 @@ import (
 )
 
 const (
-	defaultModel          = "claude-opus-5"
-	defaultTimeout        = 180 * time.Second
+	defaultModel          = "claude-opus-5-5"
+	defaultTimeout        = 420 * time.Second
 	defaultAutoMinHours   = 24.0
 	defaultManualCooldown = 60 * time.Second
 )
