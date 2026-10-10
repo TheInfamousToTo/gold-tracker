@@ -112,3 +112,39 @@ func TestProbeSignalSpread(t *testing.T) {
 		}
 	}
 }
+
+// TestProbeNewsRun makes one real analysis with the news tools on, to
+// prove the CLI accepts the tool flags, the model actually searches,
+// and the answer parses with linked news.
+//
+//	go test -tags aiprobe ./internal/ai/ -run TestProbeNewsRun -v -timeout 10m
+func TestProbeNewsRun(t *testing.T) {
+	in := goldInput(series(32, 0.05, 400))
+	in.News = true
+	in.Settings.NewsEnabled = true
+	// The synthetic series runs past today; the news search must not.
+	in.Today = time.Now().Format("2006-01-02")
+
+	start := time.Now()
+	result, err := (&CLIRunner{Timeout: 7 * time.Minute}).Run(context.Background(),
+		BuildAnalysisPrompt(in), "claude-opus-5-5", NewsTools)
+	if err != nil {
+		t.Fatalf("runner: %v", err)
+	}
+	if result.IsError {
+		t.Fatalf("CLI reported an error: %s", result.Result)
+	}
+	advice, err := ParseAnalysis(result.Result, []string{"gold"})
+	if err != nil {
+		t.Fatalf("parse: %v\nraw: %s", err, result.Result)
+	}
+	a := advice["gold"]
+	fmt.Printf("\n%s in %s: %s %.2f BHD (confidence %.2f)\n%s\nfactors: %v\n",
+		"news run", time.Since(start).Round(time.Second), a.Action, a.AmountBHD, a.Confidence, a.Reasoning, a.KeyFactors)
+	for _, n := range a.News {
+		fmt.Printf("  [%s] %s — %s %s\n      %s\n", n.Impact, n.Title, n.Source, n.Date, n.URL)
+	}
+	if len(a.News) == 0 {
+		t.Error("news run returned no linked news")
+	}
+}
