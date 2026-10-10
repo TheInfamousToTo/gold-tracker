@@ -21,7 +21,12 @@ FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb836
 
 WORKDIR /app
 
-RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
+# Pinned: an unpinned install is frozen by the build cache at whatever
+# version first populated it, and 2.1.197 was still being served on
+# 2026-10-10 although it cannot run claude-opus-5-5 (needs >= 2.1.280).
+# Bump deliberately when AI_MODEL moves to a newer model.
+ARG CLAUDE_CODE_VERSION=2.1.296
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && npm cache clean --force
 
 # The CLI needs a writable config directory; /root is not guaranteed to
 # be one on every host.
