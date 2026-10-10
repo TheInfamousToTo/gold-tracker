@@ -12,7 +12,7 @@ func withBaseline(s MetalState, b Baseline) MetalState {
 
 func TestClampCapsABuyAtOneAndAHalfTimesTheBaseline(t *testing.T) {
 	s := withBaseline(state("gold", flat(0), Position{}), Baseline{Action: ActionBuy, AmountBHD: 100, Share: 1})
-	c := clampAdvice(Advice{Action: ActionBuy, AmountBHD: 500}, s, settingsWith(nil), budget(100, 0, 1000))
+	c := clampAdvice(Advice{Action: ActionBuy, AmountBHD: 500}, s, settingsWith(nil), budget(100, 0, 1000), false)
 	if c.AmountBHD != 150 {
 		t.Fatalf("amount = %v, want 150", c.AmountBHD)
 	}
@@ -24,7 +24,7 @@ func TestClampCapsABuyAtOneAndAHalfTimesTheBaseline(t *testing.T) {
 
 func TestClampNeverSpendsMoreThanBudgetPlusReserve(t *testing.T) {
 	s := withBaseline(state("gold", flat(0), Position{}), Baseline{Action: ActionBuy, AmountBHD: 100, Share: 1})
-	c := clampAdvice(Advice{Action: ActionBuy, AmountBHD: 140}, s, settingsWith(nil), budget(100, 0, 20))
+	c := clampAdvice(Advice{Action: ActionBuy, AmountBHD: 140}, s, settingsWith(nil), budget(100, 0, 20), false)
 	if c.AmountBHD != 120 {
 		t.Fatalf("amount = %v, want 120 (100 left + 20 reserve)", c.AmountBHD)
 	}
@@ -32,7 +32,7 @@ func TestClampNeverSpendsMoreThanBudgetPlusReserve(t *testing.T) {
 
 func TestClampLimitsABuyTheRulesDidNotCallFor(t *testing.T) {
 	s := withBaseline(state("gold", flat(0), Position{}), Baseline{Action: ActionHold, Share: 0.6})
-	c := clampAdvice(Advice{Action: ActionBuy, AmountBHD: 90}, s, settingsWith(nil), budget(100, 0, 0))
+	c := clampAdvice(Advice{Action: ActionBuy, AmountBHD: 90}, s, settingsWith(nil), budget(100, 0, 0), false)
 	if c.AmountBHD != 60 {
 		t.Fatalf("amount = %v, want the normal 60 BHD share", c.AmountBHD)
 	}
@@ -41,7 +41,7 @@ func TestClampLimitsABuyTheRulesDidNotCallFor(t *testing.T) {
 func TestClampTurnsASellOfNothingIntoHold(t *testing.T) {
 	s := withBaseline(state("gold", flat(0), Position{}), Baseline{Action: ActionBuy, AmountBHD: 100, Share: 1})
 	for _, action := range []string{ActionSell, ActionCutLoss} {
-		c := clampAdvice(Advice{Action: action, AmountBHD: 100, Confidence: 0.9}, s, settingsWith(nil), budget(100, 0, 0))
+		c := clampAdvice(Advice{Action: action, AmountBHD: 100, Confidence: 0.9}, s, settingsWith(nil), budget(100, 0, 0), false)
 		if c.Action != ActionHold || c.AmountBHD != 0 {
 			t.Errorf("%s with nothing held: got %s %v, want HOLD 0", action, c.Action, c.AmountBHD)
 		}
@@ -51,7 +51,7 @@ func TestClampTurnsASellOfNothingIntoHold(t *testing.T) {
 func TestClampCapsAContrarySellsConfidenceAndSize(t *testing.T) {
 	pos := Position{Held: true, FineGrams: 20, NetValue: 990, Value: 1000, Paid: 900}
 	s := withBaseline(state("gold", flat(0), pos), Baseline{Action: ActionBuy, AmountBHD: 100, Share: 1})
-	c := clampAdvice(Advice{Action: ActionCutLoss, AmountBHD: 5000, Confidence: 0.95}, s, settingsWith(nil), budget(100, 0, 0))
+	c := clampAdvice(Advice{Action: ActionCutLoss, AmountBHD: 5000, Confidence: 0.95}, s, settingsWith(nil), budget(100, 0, 0), false)
 	if c.Action != ActionCutLoss || c.AmountBHD != 990 {
 		t.Fatalf("got %s %v, want CUT_LOSS capped at the 990 BHD held", c.Action, c.AmountBHD)
 	}
@@ -66,7 +66,7 @@ func TestClampCapsAContrarySellsConfidenceAndSize(t *testing.T) {
 func TestClampKeepsAgreedSellConfidence(t *testing.T) {
 	pos := Position{Held: true, FineGrams: 20, NetValue: 990, Value: 1000}
 	s := withBaseline(state("gold", flat(0), pos), Baseline{Action: ActionSell, AmountBHD: 200})
-	c := clampAdvice(Advice{Action: ActionSell, Confidence: 0.8}, s, settingsWith(nil), budget(0, 0, 0))
+	c := clampAdvice(Advice{Action: ActionSell, Confidence: 0.8}, s, settingsWith(nil), budget(0, 0, 0), false)
 	if c.AmountBHD != 200 || c.Confidence != 0.8 {
 		t.Fatalf("got %v BHD at %v, want the baseline's 200 at 0.8", c.AmountBHD, c.Confidence)
 	}
@@ -133,5 +133,31 @@ func TestParseReviewDropsAMalformedSuggestionButKeepsTheVerdict(t *testing.T) {
 	}
 	if _, err := ParseReview(`{"verdict": "MAYBE", "confidence": 0.5, "reasoning": "x"}`); err == nil {
 		t.Error("unknown verdict accepted")
+	}
+}
+
+func TestClampLetsAReviewUseTheWholeMonthOnOneMetal(t *testing.T) {
+	// The split gives silver 6 of a 30 BHD month; the owner chose to put
+	// the lot into silver, and the review agreed on 30.
+	s := withBaseline(state("silver", flat(0), Position{}), Baseline{Action: ActionBuy, AmountBHD: 6, Share: 0.2})
+	c := clampAdvice(Advice{Action: ActionBuy, AmountBHD: 30}, s, settingsWith(nil), budget(30, 0, 50), true)
+	if c.AmountBHD != 30 || len(c.Notes) != 0 {
+		t.Fatalf("review buy = %v (notes %v), want the whole 30 uncapped", c.AmountBHD, c.Notes)
+	}
+	// Still never past the month's budget unless it is a deep dip.
+	c = clampAdvice(Advice{Action: ActionBuy, AmountBHD: 70}, s, settingsWith(nil), budget(30, 0, 50), true)
+	if c.AmountBHD != 30 {
+		t.Errorf("review buy = %v, want capped at the 30 left this month", c.AmountBHD)
+	}
+	// The daily analysis keeps to the split.
+	if c := clampAdvice(Advice{Action: ActionBuy, AmountBHD: 30}, s, settingsWith(nil), budget(30, 0, 50), false); c.AmountBHD != 9 {
+		t.Errorf("analysis buy = %v, want 1.5 x the 6 BHD share", c.AmountBHD)
+	}
+}
+
+func TestFactorsWithNotesLeadsWithWhatTheAppChanged(t *testing.T) {
+	got := factorsWithNotes([]string{"a", "b", "c"}, []string{"App capped the amount at 9.00 BHD"})
+	if len(got) != 3 || got[0] != "App capped the amount at 9.00 BHD" || got[2] != "b" {
+		t.Errorf("got %v", got)
 	}
 }

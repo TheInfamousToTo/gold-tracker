@@ -87,7 +87,9 @@ func BuildReviewPrompt(in AdvisorInput, plan string) string {
 	b.WriteString("wrong size, metal or timing — say what to change in `suggested`. BAD_IDEA: do not ")
 	b.WriteString("do it — say what to do instead in `suggested`, which may be HOLD.\n")
 	b.WriteString("If the plan spends more than this month's remaining budget plus the reserve, it ")
-	b.WriteString("cannot be GOOD_IDEA. If it sells metal the owner does not hold, it is BAD_IDEA.\n\n")
+	b.WriteString("cannot be GOOD_IDEA. If it sells metal the owner does not hold, it is BAD_IDEA.\n")
+	b.WriteString("Unlike the daily split, a review may put the whole of this month's remaining budget ")
+	b.WriteString("into the one metal the owner chose; the reserve only on a deep dip (z ≤ -1.5).\n\n")
 	writeDecisionRules(&b)
 
 	b.WriteString("\nRespond with only this JSON object and nothing else — no preamble, no markdown:\n")
