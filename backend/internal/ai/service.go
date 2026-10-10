@@ -154,7 +154,7 @@ func (s *Service) RunOnce(ctx context.Context, source string) {
 	clamped := make(map[string]*Clamped, len(in.Metals))
 	latest := map[string]float64{}
 	for _, m := range in.Metals {
-		c := clampAdvice(advice[m.Metal], m, in.Settings, in.Budget)
+		c := clampAdvice(advice[m.Metal], m, in.Settings, in.Budget, false)
 		clamped[m.Metal] = &c
 		latest[m.Metal] = m.Indicators.Latest
 	}
@@ -166,6 +166,7 @@ func (s *Service) RunOnce(ctx context.Context, source string) {
 		c := clamped[m.Metal]
 		sig := s.signalFor(m, c.Advice, source, newsChecked)
 		sig.SignalType = c.Action
+		sig.KeyFactors = factorsWithNotes(c.KeyFactors, c.Notes)
 		sig.AmountBHD = optional(c.AmountBHD)
 		sig.AmountGrams = optional(c.AmountGrams)
 		sig.Deviates = c.Deviates
@@ -220,9 +221,10 @@ func (s *Service) RunReview(ctx context.Context, plan string) {
 			if m.Metal != sg.Metal {
 				continue
 			}
-			c := clampAdvice(Advice{Action: sg.Action, AmountBHD: sg.AmountBHD}, m, in.Settings, in.Budget)
+			c := clampAdvice(Advice{Action: sg.Action, AmountBHD: sg.AmountBHD}, m, in.Settings, in.Budget, true)
 			sig.Metal = m.Metal
 			sig.SuggestedAction = &c.Action
+			sig.KeyFactors = factorsWithNotes(sig.KeyFactors, c.Notes)
 			sig.AmountBHD = optional(c.AmountBHD)
 			sig.AmountGrams = optional(c.AmountGrams)
 			sig.PriceAtSignal = optional(m.Indicators.Latest)

@@ -31,7 +31,12 @@ type Clamped struct {
 // clampAdvice bounds the model's numbers to what the money and the
 // holdings allow. The model never chooses grams; they are derived from
 // the amount at the price the owner would actually pay or receive.
-func clampAdvice(a Advice, s MetalState, settings model.AdvisorSettings, budget Budget) Clamped {
+//
+// wholeBudget is for a plan review: the owner has chosen to put this
+// month's money into one metal, so a buy may use all of what is left
+// (and the reserve's dip share on a deep dip) rather than only that
+// metal's slice of the split the daily analysis works to.
+func clampAdvice(a Advice, s MetalState, settings model.AdvisorSettings, budget Budget, wholeBudget bool) Clamped {
 	b := s.Baseline
 	c := Clamped{Advice: a}
 	spread := settings.SpreadFraction(s.Metal)
@@ -43,12 +48,19 @@ func clampAdvice(a Advice, s MetalState, settings model.AdvisorSettings, budget 
 		if b.Action == ActionBuy {
 			limit = newsBuyStretch * b.AmountBHD
 		}
+		if wholeBudget {
+			whole := budget.Remaining
+			if b.ReserveDraw > 0 {
+				whole += dipReserveDraw * budget.Reserve
+			}
+			limit = math.Max(limit, whole)
+		}
 		limit = math.Min(limit, budget.Remaining+budget.Reserve)
 		if c.AmountBHD <= 0 && b.Action == ActionBuy {
 			c.AmountBHD = b.AmountBHD
 		}
 		if c.AmountBHD > limit {
-			c.Notes = append(c.Notes, fmt.Sprintf("amount capped at %.2f BHD", limit))
+			c.Notes = append(c.Notes, fmt.Sprintf("App capped the amount at %.2f BHD", limit))
 			c.AmountBHD = limit
 		}
 		if c.AmountBHD <= 0 || latest <= 0 {
@@ -98,7 +110,17 @@ func (c *Clamped) toHold(why string) {
 	c.Action = ActionHold
 	c.AmountBHD = 0
 	c.AmountGrams = 0
-	c.Notes = append(c.Notes, why)
+	c.Notes = append(c.Notes, "App changed this to HOLD: "+why)
+}
+
+// factorsWithNotes puts what the app changed ahead of the model's own
+// factors. The reasoning was written before the clamp, so without this a
+// card could say "buy 30" over a stored 9 with nothing explaining why.
+func factorsWithNotes(factors, notes []string) []string {
+	if len(notes) == 0 {
+		return factors
+	}
+	return trimFactors(append(append([]string(nil), notes...), factors...))
 }
 
 // capTotalBuys scales every BUY down together when, across metals,
@@ -124,6 +146,6 @@ func capTotalBuys(advice map[string]*Clamped, budget Budget, latest map[string]f
 		if p := latest[metal]; p > 0 {
 			c.AmountGrams = round3v(c.AmountBHD / (p * (1 + settings.SpreadFraction(metal))))
 		}
-		c.Notes = append(c.Notes, "scaled down to fit the budget across both metals")
+		c.Notes = append(c.Notes, "App scaled this down to fit the budget across both metals")
 	}
 }
