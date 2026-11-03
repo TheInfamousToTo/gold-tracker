@@ -1,6 +1,7 @@
 export const TABS = [
   { id: 'holdings', label: 'Holdings' },
-  { id: 'add-item', label: 'Add purchase' },
+  { id: 'add-item', label: 'Add physical' },
+  { id: 'stocks', label: 'Stocks & ETFs' },
   { id: 'market', label: 'Market' },
 ];
 
