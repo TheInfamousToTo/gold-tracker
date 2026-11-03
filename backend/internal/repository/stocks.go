@@ -160,6 +160,18 @@ func (r *PostgresRepository) RecordStockTrade(ctx context.Context, input model.S
     if currency != input.Currency {
         return model.StockTrade{}, stockInputError("symbol currency differs from existing position")
     }
+    // A moving-average ledger must be entered in trade-date order.
+    // Allow multiple trades on the same date in their recorded order.
+    var lastDate time.Time
+    dateErr := tx.QueryRow(ctx, `SELECT trade_date FROM stock_trades
+        WHERE symbol=$1 ORDER BY trade_date DESC, id DESC LIMIT 1`, input.Symbol).Scan(&lastDate)
+    if dateErr != nil && !errors.Is(dateErr, pgx.ErrNoRows) {
+        return model.StockTrade{}, dateErr
+    }
+    parsedDate, _ := time.Parse("2006-01-02", input.TradeDate)
+    if dateErr == nil && parsedDate.Before(lastDate) {
+        return model.StockTrade{}, stockInputError("enter trades in chronological order for each symbol")
+    }
     notionalQuote := input.Shares * input.UnitPrice
     feeQuote := broker.Fee(input.Side, notionalQuote)
     notional := math.Round(notionalQuote*input.FXToBHD*1000)/1000
