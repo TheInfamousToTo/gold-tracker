@@ -36,7 +36,7 @@ func testPool(t *testing.T) *pgxpool.Pool {
 		t.Fatalf("apply migrations: %v", err)
 	}
 	if _, err := pool.Exec(context.Background(),
-		"TRUNCATE gold_items, gold_prices, silver_prices, signals_log RESTART IDENTITY"); err != nil {
+		"TRUNCATE stock_trades, stock_positions, stock_brokers, gold_items, gold_prices, silver_prices, signals_log RESTART IDENTITY"); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	return pool
