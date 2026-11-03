@@ -3,6 +3,7 @@ package model
 import (
     "math"
     "testing"
+    "time"
 )
 
 func TestBrokerFeeIncludesMinimumFixedAndTax(t *testing.T) {
@@ -33,6 +34,9 @@ func TestTradeValidation(t *testing.T) {
     invalid = valid
     invalid.Currency = "BHD"
     if err := invalid.Validate(); err == nil { t.Error("accepted non-unity BHD exchange rate") }
+    invalid = valid
+    invalid.TradeDate = time.Now().UTC().AddDate(0, 0, 3).Format("2006-01-02")
+    if err := invalid.Validate(); err == nil { t.Error("accepted a future trade date") }
 }
 
 func TestAverageCostBasisIncludingFeesAndPartialSale(t *testing.T) {

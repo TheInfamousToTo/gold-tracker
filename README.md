@@ -45,6 +45,9 @@ Routes (session authentication required):
 
 - `GET /api/stocks/positions` — open and closed stock positions.
 - `GET /api/stocks/trades`, `POST /api/stocks/trades` — trade history and recording.
+- `DELETE /api/stocks/trades/:id` — undo a symbol's most recent trade (the
+  position is rebuilt from the remaining trades; earlier trades cannot be
+  removed because later sales were costed against them).
 - `GET /api/stocks/brokers`, `POST /api/stocks/brokers`,
   `PUT /api/stocks/brokers/:id` — fee profiles.
 - `PUT /api/stocks/quotes/:symbol` — manual dated market price.

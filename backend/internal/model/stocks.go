@@ -74,8 +74,15 @@ func (t *StockTradeInput) Validate() error {
         return errors.New("asset_name is required (max 120 characters)")
     }
     if t.Side != "buy" && t.Side != "sell" { return errors.New("side must be buy or sell") }
-    if _, err := time.Parse("2006-01-02", t.TradeDate); err != nil {
+    tradeDate, err := time.Parse("2006-01-02", t.TradeDate)
+    if err != nil {
         return errors.New("trade_date must be YYYY-MM-DD")
+    }
+    // Trades must be entered in date order, so one future-dated trade
+    // would block every real entry for that symbol until its date. One
+    // day of slack covers Bahrain (UTC+3) being ahead of the server.
+    if tradeDate.After(time.Now().UTC().AddDate(0, 0, 1)) {
+        return errors.New("trade_date cannot be in the future")
     }
     if !finiteNonnegative(t.Shares) || t.Shares == 0 ||
        !finiteNonnegative(t.UnitPrice) || t.UnitPrice == 0 ||

@@ -6,7 +6,8 @@ import { Card } from '../ui/Card.jsx';
 import { Button } from '../ui/Button.jsx';
 import { Field, inputClass } from '../ui/Field.jsx';
 
-const today = () => new Date().toISOString().slice(0, 10);
+// Local date, not toISOString(): in Bahrain (UTC+3) that reads yesterday until 03:00.
+const today = () => new Date().toLocaleDateString('en-CA');
 const blankTrade = () => ({
   side: 'buy', trade_date: today(), symbol: '', asset_name: '',
   shares: '', unit_price: '', currency: 'BHD', fx_to_bhd: '1',
@@ -131,6 +132,25 @@ export function StockPage() {
       });
       setNotice('Broker fee schedule saved');
       setBrokerForm(blankBroker());
+      await refresh();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // The trade list is newest first, so the first row per symbol is the
+  // only one the API will undo.
+  const undoable = new Set();
+  const seen = new Set();
+  for (const t of trades) { if (!seen.has(t.symbol)) { seen.add(t.symbol); undoable.add(t.id); } }
+  const undoTrade = async (t) => {
+    if (!confirm(`Undo ${t.side} of ${fmt(t.shares, 4)} ${t.symbol} on ${fmtDate(t.trade_date)}? This can't be undone.`)) return;
+    setSaving(true); setNotice(null); setError(null);
+    try {
+      await apiRequest('/api/stocks/trades/' + t.id, { method: 'DELETE' });
+      setNotice('Trade undone: ' + t.symbol);
       await refresh();
     } catch (err) {
       setError(err.message);
@@ -350,7 +370,7 @@ export function StockPage() {
         {trades.length === 0 ? <p className="p-5 text-sm text-muted">No trades recorded yet.</p> : (
           <div className="overflow-x-auto"><table className="w-full text-sm">
             <thead><tr className="stamp text-left">
-              {['Date', 'Ticker', 'Side', 'Shares', 'Price', 'Broker', 'Fees BHD', 'Settlement BHD', 'Realized P/L BHD'].map((label) =>
+              {['Date', 'Ticker', 'Side', 'Shares', 'Price', 'Broker', 'Fees BHD', 'Settlement BHD', 'Realized P/L BHD', ''].map((label) =>
                 <th key={label} className="whitespace-nowrap px-4 py-3">{label}</th>)}
             </tr></thead>
             <tbody>{trades.map((t) => (
@@ -364,6 +384,8 @@ export function StockPage() {
                 <td className="px-4 py-3 font-mono">{money(t.fees_bhd)}</td>
                 <td className="px-4 py-3 font-mono">{money(t.total_bhd)}</td>
                 <td className="px-4 py-3 font-mono">{t.side === 'sell' ? <Tone value={t.realized_pnl_bhd} /> : '—'}</td>
+                <td className="px-4 py-3">{undoable.has(t.id) &&
+                  <Button variant="danger" size="sm" disabled={saving} onClick={() => undoTrade(t)}>Undo</Button>}</td>
               </tr>
             ))}</tbody>
           </table></div>

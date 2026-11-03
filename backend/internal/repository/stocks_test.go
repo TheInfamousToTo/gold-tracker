@@ -71,3 +71,38 @@ func TestStockTradesAndBrokerSnapshot(t *testing.T) {
         t.Fatalf("historic fees were changed: %+v", trades)
     }
 }
+
+func TestUndoLatestStockTradeReplaysPosition(t *testing.T) {
+    repo := repoFor(t)
+    ctx := context.Background()
+    trade := func(side, date string, shares, price float64) model.StockTrade {
+        t.Helper()
+        saved, err := repo.RecordStockTrade(ctx, model.StockTradeInput{
+            Symbol: "VOO", AssetName: "S&P 500 ETF", Side: side, TradeDate: date,
+            Shares: shares, UnitPrice: price, Currency: "BHD", FXToBHD: 1,
+        })
+        if err != nil { t.Fatalf("%s: %v", side, err) }
+        return saved
+    }
+    first := trade("buy", "2026-10-01", 10, 10)
+    trade("buy", "2026-10-02", 10, 20)
+    sell := trade("sell", "2026-10-03", 5, 30)
+
+    if err := repo.DeleteLatestStockTrade(ctx, first.ID); err == nil {
+        t.Fatal("undid a trade that later trades depend on")
+    }
+    if err := repo.DeleteLatestStockTrade(ctx, sell.ID); err != nil { t.Fatal(err) }
+    positions, err := repo.ListStockPositions(ctx)
+    if err != nil { t.Fatal(err) }
+    if positions[0].Shares != 20 || positions[0].CostBasisBHD != 300 || positions[0].RealizedPNLBHD != 0 {
+        t.Fatalf("after undoing the sale: %+v", positions[0])
+    }
+
+    trades, _ := repo.ListStockTrades(ctx)
+    for _, tr := range trades {
+        if err := repo.DeleteLatestStockTrade(ctx, tr.ID); err != nil { t.Fatal(err) }
+    }
+    if positions, _ = repo.ListStockPositions(ctx); len(positions) != 0 {
+        t.Fatalf("position left after undoing every trade: %+v", positions)
+    }
+}

@@ -77,6 +77,7 @@ func main() {
 		apiGroup.GET("/stocks/positions", h.ListStockPositions)
 		apiGroup.GET("/stocks/trades", h.ListStockTrades)
 		apiGroup.POST("/stocks/trades", h.CreateStockTrade)
+		apiGroup.DELETE("/stocks/trades/:id", h.DeleteStockTrade)
 		apiGroup.PUT("/stocks/quotes/:symbol", h.SaveStockQuote)
 		
 		apiGroup.GET("/portfolio", h.GetPortfolio)
