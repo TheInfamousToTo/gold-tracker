@@ -10,6 +10,7 @@ import { StatGrid } from './components/holdings/StatGrid.jsx';
 import { HoldingsTable } from './components/holdings/HoldingsTable.jsx';
 import { MassByPurity } from './components/holdings/MassByPurity.jsx';
 import { ItemForm } from './components/forms/ItemForm.jsx';
+import { StockPage } from './components/stocks/StockPage.jsx';
 import { PriceForm } from './components/forms/PriceForm.jsx';
 import { PriceChart } from './components/market/PriceChart.jsx';
 import { MetalToggle } from './components/market/MetalToggle.jsx';
@@ -110,6 +111,8 @@ function Dashboard({ onSignOut }) {
           <MassByPurity items={items} loading={loading} />
         </div>
       )}
+
+      {activeTab === 'stocks' && <StockPage />}
 
       {activeTab === 'add-item' && (
         <div className="mx-auto max-w-3xl">
