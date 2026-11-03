@@ -11,6 +11,50 @@ An enterprise-grade, self-hosted application for logging gold purchases, trackin
 - **n8n Integration:** Designed to work with n8n for automated price feeds.
 - **Grafana Ready:** Schema optimized for Grafana dashboards and long-term history tracking.
 
+## 📈 Stocks and ETFs
+
+The **Stocks & ETFs** tab tracks securities separately from physical gold and
+silver. Physical holdings, weight/purity calculations, metal feeds and the AI
+advisor are unchanged.
+
+1. Save a broker fee schedule: buy/sell commission percentages, a fixed
+   per-order charge, minimum commission, and tax percentage **on commission**.
+   Fixed/minimum amounts are interpreted in the trade's **quote currency**;
+   create different schedules when your broker charges different currencies.
+2. Record purchases or sales with ticker, share quantity, unit execution price,
+   currency and an explicit FX-to-BHD conversion rate (use 1 for BHD).
+   Choose the broker to calculate the actual trade's estimated service charges.
+3. Use **Update quote** on a position to enter a dated market price and, for
+   foreign currency holdings, a current FX conversion rate. Stock quotes are
+   **manual, not live**, and missing quotes are shown as unknown rather than zero.
+
+Stock cost basis uses a **moving weighted-average method**. Purchase fees are
+added to the cost basis; selling fees are deducted from net proceeds. Partial
+sales remove a proportional share of cost basis. Realized P/L remains available
+after a position closes. Trade fee amounts and exchange rates are saved at
+execution time and do not change when a broker schedule changes. To preserve
+accurate cost basis, enter each symbol's trades in chronological order.
+
+Broker schedules are user-configured, not downloaded from a broker. Confirm
+exchange, clearing, stamp duties, service taxes and special fees with your
+broker statement; any costs not represented by the schedule are not included.
+Stocks and ETFs are valued before hypothetical future selling fees, and the
+current holdings display distinguishes missing/stale manual quotes.
+
+Routes (session authentication required):
+
+- `GET /api/stocks/positions` — open and closed stock positions.
+- `GET /api/stocks/trades`, `POST /api/stocks/trades` — trade history and recording.
+- `DELETE /api/stocks/trades/:id` — undo a symbol's most recent trade (the
+  position is rebuilt from the remaining trades; earlier trades cannot be
+  removed because later sales were costed against them).
+- `GET /api/stocks/brokers`, `POST /api/stocks/brokers`,
+  `PUT /api/stocks/brokers/:id` — fee profiles.
+- `PUT /api/stocks/quotes/:symbol` — manual dated market price.
+
+Schema migration `0004_stock_trading.sql` is embedded and applied
+automatically at backend startup; no changes to existing metal rows are needed.
+
 ## 🛠️ Technology Stack
 
 - **Backend:** [Go](https://go.dev/) (Gin Gonic) - High-performance, type-safe API.

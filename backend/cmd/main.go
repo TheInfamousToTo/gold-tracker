@@ -70,6 +70,16 @@ func main() {
 		apiGroup.PUT("/items/:id", h.UpdateItem)
 		apiGroup.DELETE("/items/:id", h.DeleteItem)
 		
+		// Brokerage schedules and stock/ETF transactions (manual quotes).
+		apiGroup.GET("/stocks/brokers", h.ListStockBrokers)
+		apiGroup.POST("/stocks/brokers", h.SaveStockBroker)
+		apiGroup.PUT("/stocks/brokers/:id", h.SaveStockBroker)
+		apiGroup.GET("/stocks/positions", h.ListStockPositions)
+		apiGroup.GET("/stocks/trades", h.ListStockTrades)
+		apiGroup.POST("/stocks/trades", h.CreateStockTrade)
+		apiGroup.DELETE("/stocks/trades/:id", h.DeleteStockTrade)
+		apiGroup.PUT("/stocks/quotes/:symbol", h.SaveStockQuote)
+		
 		apiGroup.GET("/portfolio", h.GetPortfolio)
 		
 		apiGroup.GET("/prices", h.GetPrices)
