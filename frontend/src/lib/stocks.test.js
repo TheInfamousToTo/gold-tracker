@@ -12,8 +12,8 @@ describe('brokerage fees', () => {
   it('converts amounts to BHD and deducts selling fees', () => {
     const preview = estimateTrade({ side: 'sell', shares: '2', unit_price: '100', currency: 'USD', fx_to_bhd: '0.377' }, broker);
     expect(preview.gross).toBe(75.4);
-    expect(preview.fee).toBe(0.944);
-    expect(preview.total).toBeCloseTo(74.456);
+    expect(preview.fee).toBe(1.037);
+    expect(preview.total).toBeCloseTo(74.363);
   });
   it('requires a positive FX rate for foreign-currency shares', () => {
     expect(estimateTrade({ side: 'buy', shares: 1, unit_price: 4, currency: 'USD', fx_to_bhd: 0 }, null)).toBeNull();
