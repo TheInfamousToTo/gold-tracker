@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine@sha256:28d89ee9cc0ff9fec75c82ca201e6bf7fdf9a679d4b7b24dfa04f2bb766bb468 AS builder
+FROM golang:1.26-alpine@sha256:30b1e546a9c7fa3b747c2bdba3a0c7bdf3a02ebb4c5b8405d2f948d7e8aac4ec AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/main.go \
 # to the Claude Code CLI. That runs on the owner's subscription instead
 # of the metered API, and the CLI needs a Node runtime. The Go binary is
 # static (CGO disabled), so it runs here unchanged.
-FROM node:20-alpine@sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+FROM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5
 
 WORKDIR /app
 
@@ -26,7 +26,11 @@ WORKDIR /app
 # 2026-10-10 although it cannot run claude-opus-5-5 (needs >= 2.1.280).
 # Bump deliberately when AI_MODEL moves to a newer model.
 ARG CLAUDE_CODE_VERSION=2.1.296
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} && npm cache clean --force
+# npm is only needed to install the CLI. Removing it afterwards drops its
+# bundled dependencies (tar, glob, minimatch, ...), which were every
+# node-pkg finding in the nightly Trivy scan. apk upgrade picks up Alpine
+# fixes published after the pinned base digest.
+RUN apk upgrade --no-cache  && npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}  && npm cache clean --force  && rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 
 # The CLI needs a writable config directory; /root is not guaranteed to
 # be one on every host.
