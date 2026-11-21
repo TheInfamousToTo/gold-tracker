@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -115,15 +117,21 @@ func Send(ctx context.Context, client *http.Client, webhook string, msgs []strin
 		body, _ := json.Marshal(map[string]any{
 			"content":          m,
 			"allowed_mentions": map[string]any{"parse": []string{}},
+			"flags":            4, // SUPPRESS_EMBEDS: no link previews of model-written URLs
 		})
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhook, bytes.NewReader(body))
 		if err != nil {
-			return err
+			return errors.New("DISCORD_WEBHOOK_URL is not a valid URL")
 		}
 		req.Header.Set("Content-Type", "application/json")
 		resp, err := client.Do(req)
 		if err != nil {
-			return err
+			// *url.Error embeds the webhook URL, which carries its token.
+			var ue *url.Error
+			if errors.As(err, &ue) {
+				err = ue.Err
+			}
+			return fmt.Errorf("webhook request failed: %v", err)
 		}
 		resp.Body.Close()
 		if resp.StatusCode >= 300 {
