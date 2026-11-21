@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 
 	"github.com/TheInfamousToTo/gold-tracker/backend/internal/ai"
 	"github.com/TheInfamousToTo/gold-tracker/backend/internal/api"
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/report"
 	"github.com/TheInfamousToTo/gold-tracker/backend/internal/repository"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -40,8 +42,13 @@ func main() {
 		log.Print("AI signals disabled (set AI_ENABLED=true and CLAUDE_CODE_OAUTH_TOKEN to enable)")
 	}
 
+	// Monthly report: generated on the 1st for the previous month and
+	// posted to Discord when DISCORD_WEBHOOK_URL is set.
+	reports := report.NewService(repo, &ai.CLIRunner{Timeout: aiCfg.Timeout}, aiCfg, os.Getenv("DISCORD_WEBHOOK_URL"))
+	go reports.Schedule(context.Background())
+
 	// Initialize handler
-	h := api.NewHandler(repo, aiService)
+	h := api.NewHandler(repo, aiService, reports)
 
 	r := gin.Default()
 
@@ -89,6 +96,10 @@ func main() {
 		apiGroup.POST("/signals/generate", h.GenerateSignal)
 		apiGroup.GET("/signals/status", h.SignalStatus)
 		apiGroup.POST("/signals/review", h.ReviewPlan)
+
+		apiGroup.GET("/reports", h.ListReports)
+		apiGroup.GET("/reports/status", h.ReportStatus)
+		apiGroup.POST("/reports/generate", h.GenerateReport)
 
 		apiGroup.GET("/ai/settings", h.GetAdvisorSettings)
 		apiGroup.PUT("/ai/settings", h.UpdateAdvisorSettings)

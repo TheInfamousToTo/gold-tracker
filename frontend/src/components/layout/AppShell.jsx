@@ -1,4 +1,4 @@
-import { NavTabs } from './NavTabs.jsx';
+import { NavTabs, BottomNav } from './NavTabs.jsx';
 import { fmt, fmtDate, daysSince } from '../../lib/format.js';
 import { METAL_FINE_LABEL } from '../../lib/prices.js';
 
@@ -25,16 +25,16 @@ function feedState(price, date) {
 function SpotPrice({ metal, price, date }) {
   const feed = feedState(price, date);
   return (
-    <div className="flex items-baseline gap-2">
+    <div className="flex shrink-0 items-baseline gap-1.5 sm:gap-2">
       <span className="stamp">
-        {METAL_FINE_LABEL[metal]} {metal}
+        {METAL_FINE_LABEL[metal]}<span className="hidden sm:inline"> {metal}</span>
       </span>
-      <span className="font-mono text-lg font-semibold text-chalk">
+      <span className="font-mono text-base font-semibold text-chalk sm:text-lg">
         {price != null ? fmt(price, 3) : '—'}
       </span>
-      <span className="stamp">BHD/g</span>
+      <span className="stamp hidden sm:inline">BHD/g</span>
       <span
-        className={`andon ${feed.className} ml-1`}
+        className={`andon ${feed.className} sm:ml-1`}
         title={date ? `Last recorded ${fmtDate(date)}` : 'No price recorded'}
       >
         {feed.label}
@@ -57,19 +57,23 @@ export function AppShell({ activeTab, onTabChange, spots, error, onReconnect, on
 
   return (
     <div className="min-h-screen bg-ink">
-      <header className="sticky top-0 z-40 border-b border-line bg-ink/95 backdrop-blur">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-8 gap-y-3 px-4 py-3 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-40 border-b border-line bg-ink/95 pt-[env(safe-area-inset-top)] backdrop-blur">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 sm:gap-x-8 sm:px-6 sm:py-3 lg:px-8">
           <div className="flex items-center gap-2.5">
             <span aria-hidden="true" className="h-3.5 w-3.5 rounded-[2px] bg-brand" />
-            <span className="font-display text-base font-bold uppercase tracking-stamp text-chalk">
+            <span className="font-display text-sm font-bold uppercase tracking-stamp text-chalk sm:text-base">
               Gold Tracker
             </span>
           </div>
 
-          <SpotPrice metal="gold" price={gold.price} date={gold.date} />
-          {silver.price != null && (
-            <SpotPrice metal="silver" price={silver.price} date={silver.date} />
-          )}
+          {/* On a phone the spot prices sit on their own line and scroll
+              sideways rather than wrapping into a second and third row. */}
+          <div className="order-last -mx-4 flex w-[calc(100%+2rem)] gap-5 overflow-x-auto px-4 sm:order-none sm:mx-0 sm:w-auto sm:gap-8 sm:overflow-visible sm:px-0">
+            <SpotPrice metal="gold" price={gold.price} date={gold.date} />
+            {silver.price != null && (
+              <SpotPrice metal="silver" price={silver.price} date={silver.date} />
+            )}
+          </div>
 
           <div className="ml-auto flex items-center gap-2">
             <NavTabs activeTab={activeTab} onChange={onTabChange} />
@@ -85,9 +89,9 @@ export function AppShell({ activeTab, onTabChange, spots, error, onReconnect, on
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto max-w-7xl px-4 pb-28 pt-4 sm:px-6 sm:py-8 lg:px-8">
         {error && (
-          <div className="mb-6 flex items-center justify-between gap-4 rounded-lg border-l-4 border-l-bad border-y border-r border-bad/30 bg-bad/10 px-4 py-3">
+          <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-lg border-l-4 border-l-bad border-y border-r border-bad/30 bg-bad/10 px-4 py-3">
             <p className="flex items-center gap-2 text-sm text-bad-bright">
               <span className="andon andon-bad">Down</span>
               Can't reach the API: {error}
@@ -102,6 +106,7 @@ export function AppShell({ activeTab, onTabChange, spots, error, onReconnect, on
         )}
         {children}
       </main>
+      <BottomNav activeTab={activeTab} onChange={onTabChange} />
     </div>
   );
 }

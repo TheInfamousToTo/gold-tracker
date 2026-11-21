@@ -9,17 +9,19 @@ import (
 
 	"github.com/TheInfamousToTo/gold-tracker/backend/internal/ai"
 	"github.com/TheInfamousToTo/gold-tracker/backend/internal/model"
+	"github.com/TheInfamousToTo/gold-tracker/backend/internal/report"
 	"github.com/TheInfamousToTo/gold-tracker/backend/internal/repository"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
-	Repo *repository.PostgresRepository
-	AI   *ai.Service
+	Repo    *repository.PostgresRepository
+	AI      *ai.Service
+	Reports *report.Service
 }
 
-func NewHandler(repo *repository.PostgresRepository, aiService *ai.Service) *Handler {
-	return &Handler{Repo: repo, AI: aiService}
+func NewHandler(repo *repository.PostgresRepository, aiService *ai.Service, reports *report.Service) *Handler {
+	return &Handler{Repo: repo, AI: aiService, Reports: reports}
 }
 
 // Health check

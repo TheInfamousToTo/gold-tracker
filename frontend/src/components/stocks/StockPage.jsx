@@ -29,9 +29,9 @@ function Tone({ value }) {
 }
 function SummaryCell({ title, value, detail }) {
   return (
-    <div className="rounded-lg border border-line bg-ink-raised px-4 py-4">
+    <div className="rounded-lg border border-line bg-ink-raised px-3.5 py-3 sm:px-4 sm:py-4">
       <p className="stamp">{title}</p>
-      <p className="mt-2 font-mono text-xl font-semibold text-chalk">{value}</p>
+      <p className="mt-2 break-words font-mono text-base font-semibold text-chalk sm:text-xl">{value}</p>
       <p className="mt-1 text-xs text-muted">{detail}</p>
     </div>
   );
@@ -190,12 +190,12 @@ export function StockPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       <div>
         <h1 className="font-display text-xl font-semibold text-chalk">Stocks & ETFs</h1>
         <p className="mt-1 text-sm text-muted">Track shares separately from physical gold and silver. All totals are converted to BHD using your entered FX rates.</p>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <SummaryCell title="Open cost basis" value={money(totals.cost) + ' BHD'} detail="Includes purchase commissions" />
         <SummaryCell title="Quoted market value" value={money(totals.value) + ' BHD'} detail={totals.unpriced ? totals.unpriced + ' open positions have no quote — partial total' : 'Using manually entered quotes'} />
         <SummaryCell title="Unrealized P/L" value={<Tone value={totals.unpriced === activePositions.length && totals.unpriced ? null : totals.unrealized} />} detail="Before estimated future sale fees" />
