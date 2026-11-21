@@ -33,27 +33,40 @@ func clip(s string, n int) string {
 	if utf8.RuneCountInString(s) <= n {
 		return s
 	}
+	if n < 1 { // a huge weight can leave no room for the name
+		return ""
+	}
 	r := []rune(s)
 	return string(r[:n-1]) + "…"
 }
 
-// Table renders the per-item table as fixed-width text for a code block.
-// Prices are BHD per gram; gains are BHD.
+// tableWidth fits a code block on a phone without wrapping (~36 chars).
+const tableWidth = 35
+
+// Table renders the per-item table as fixed-width text for a code block,
+// two lines per item so it fits a phone: name and weight, then
+// buy → now (BHD/g), total gain and month gain (BHD).
 func Table(d model.ReportData) string {
 	var b strings.Builder
-	row := func(cols ...string) {
-		fmt.Fprintf(&b, "%-14s %7s %8s %8s %9s %9s\n", cols[0], cols[1], cols[2], cols[3], cols[4], cols[5])
+	row := func(price, gain, month string) {
+		fmt.Fprintf(&b, " %-15s %9s %8s\n", price, gain, month)
 	}
-	row("Item", "Grams", "Buy/g", "Now/g", "Gain", "Month")
-	b.WriteString(strings.Repeat("-", 60) + "\n")
+	rule := strings.Repeat("─", tableWidth) + "\n"
+	row("Buy → Now /g", "Gain", "Month")
+	b.WriteString(rule)
 	for _, it := range d.Items {
+		grams := fmt.Sprintf(" · %.2f g", it.WeightGrams)
+		name := it.Name
+		if it.Purity != "" && !strings.Contains(name, it.Purity) {
+			name += " " + it.Purity
+		}
+		b.WriteString(clip(name, tableWidth-utf8.RuneCountInString(grams)) + grams + "\n")
 		buy := it.PaidPerGram
-		row(clip(it.Name+" "+it.Purity, 14), fmt.Sprintf("%.2f", it.WeightGrams), money(&buy, false),
-			money(it.NowPerGram, false), money(it.Gain, true), money(it.MonthGain, true))
+		row(money(&buy, false)+" → "+money(it.NowPerGram, false), money(it.Gain, true), money(it.MonthGain, true))
 	}
-	b.WriteString(strings.Repeat("-", 60) + "\n")
+	b.WriteString(rule)
 	t := d.Totals
-	row("TOTAL", "", "", "", money(&t.Gain, true), money(&t.MonthGain, true))
+	row("TOTAL", money(&t.Gain, true), money(&t.MonthGain, true))
 	return b.String()
 }
 
