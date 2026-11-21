@@ -107,3 +107,12 @@ func TestPromptHidesNames(t *testing.T) {
 		t.Fatal("prompt leaks item name or lacks label")
 	}
 }
+
+func TestClipNoRoom(t *testing.T) {
+	if got := clip("Gold bar", 0); got != "" {
+		t.Fatalf("clip(_, 0) = %q", got)
+	}
+	if got := clip("Gold bar", 1); got != "…" {
+		t.Fatalf("clip(_, 1) = %q", got)
+	}
+}

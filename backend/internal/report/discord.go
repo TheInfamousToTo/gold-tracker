@@ -33,6 +33,9 @@ func clip(s string, n int) string {
 	if utf8.RuneCountInString(s) <= n {
 		return s
 	}
+	if n < 1 { // a huge weight can leave no room for the name
+		return ""
+	}
 	r := []rune(s)
 	return string(r[:n-1]) + "…"
 }
