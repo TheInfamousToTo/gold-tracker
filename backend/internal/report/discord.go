@@ -52,6 +52,7 @@ func Table(d model.ReportData) string {
 		fmt.Fprintf(&b, " %-15s %9s %8s\n", price, gain, month)
 	}
 	rule := strings.Repeat("─", tableWidth) + "\n"
+	b.WriteString(" All amounts in BHD\n\n")
 	row("Buy → Now /g", "Gain", "Month")
 	b.WriteString(rule)
 	for _, it := range d.Items {
