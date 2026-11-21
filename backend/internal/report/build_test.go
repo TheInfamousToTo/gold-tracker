@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/TheInfamousToTo/gold-tracker/backend/internal/model"
 )
@@ -72,6 +73,12 @@ func TestBuild(t *testing.T) {
 	if !strings.Contains(msgs[1], "Ring 18K") {
 		t.Fatalf("table missing ring row:\n%s", msgs[1])
 	}
+	for _, line := range strings.Split(Table(d), "\n") {
+		if n := utf8.RuneCountInString(line); n > tableWidth {
+			t.Fatalf("table line %d chars wide, wraps on a phone: %q", n, line)
+		}
+	}
+	t.Log("\n" + Table(d))
 }
 
 func TestSplit(t *testing.T) {
