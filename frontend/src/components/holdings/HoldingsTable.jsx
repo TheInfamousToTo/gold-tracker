@@ -1,4 +1,4 @@
-import { HoldingRow } from './HoldingRow.jsx';
+import { HoldingRow, HoldingCard } from './HoldingRow.jsx';
 import { Card } from '../ui/Card.jsx';
 import { EmptyState } from '../ui/EmptyState.jsx';
 import { Skeleton } from '../ui/Skeleton.jsx';
@@ -28,7 +28,13 @@ export function HoldingsTable({ items, loading, onEdit, onDelete, onAddFirst }) 
           action={{ label: 'Add a purchase', onClick: onAddFirst }}
         />
       ) : (
-        <div className="overflow-x-auto">
+        <>
+        <ul className="md:hidden">
+          {items.map((item) => (
+            <HoldingCard key={item.id} item={item} onEdit={onEdit} onDelete={onDelete} />
+          ))}
+        </ul>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full">
             <thead>
               <tr>
@@ -54,6 +60,7 @@ export function HoldingsTable({ items, loading, onEdit, onDelete, onAddFirst }) 
             </tbody>
           </table>
         </div>
+        </>
       )}
     </Card>
   );

@@ -17,18 +17,18 @@ const TONES = {
 function Stat({ label, value, unit, tone = 'neutral', loading }) {
   const t = TONES[tone];
   return (
-    <div className={`rounded-lg border border-line border-l-4 bg-ink-raised px-5 py-4 ${t.edge}`}>
+    <div className={`rounded-lg border border-line border-l-4 bg-ink-raised px-3.5 py-3 sm:px-5 sm:py-4 ${t.edge}`}>
       <p className="stamp">{label}</p>
       {loading ? (
-        <Skeleton className="mt-3 h-7 w-28" />
+        <Skeleton className="mt-3 h-7 w-24" />
       ) : (
-        <p className="mt-2 flex items-baseline gap-1.5">
+        <p className="mt-2 flex flex-wrap items-baseline gap-x-1.5">
           {t.mark && (
             <span aria-hidden="true" className={`text-sm ${t.text}`}>
               {t.mark}
             </span>
           )}
-          <span className={`font-mono text-2xl font-semibold ${t.text}`}>{value}</span>
+          <span className={`font-mono text-xl font-semibold sm:text-2xl ${t.text}`}>{value}</span>
           <span className="stamp">{unit}</span>
         </p>
       )}
@@ -43,7 +43,7 @@ export function StatGrid({ totals, loading }) {
   const sign = up ? '+' : '';
 
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <Stat label="Invested" value={fmt(totals.total_paid, 2)} unit="BHD" loading={loading} />
       <Stat label="Market value" value={fmt(totals.total_value, 2)} unit="BHD" loading={loading} />
       <Stat

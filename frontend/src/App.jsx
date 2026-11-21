@@ -11,6 +11,7 @@ import { HoldingsTable } from './components/holdings/HoldingsTable.jsx';
 import { MassByPurity } from './components/holdings/MassByPurity.jsx';
 import { ItemForm } from './components/forms/ItemForm.jsx';
 import { StockPage } from './components/stocks/StockPage.jsx';
+import { ReportsPage } from './components/reports/ReportsPage.jsx';
 import { PriceForm } from './components/forms/PriceForm.jsx';
 import { PriceChart } from './components/market/PriceChart.jsx';
 import { MetalToggle } from './components/market/MetalToggle.jsx';
@@ -99,7 +100,7 @@ function Dashboard({ onSignOut }) {
       onSignOut={onSignOut}
     >
       {activeTab === 'holdings' && (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           <StatGrid totals={portfolio.totals || {}} loading={loading} />
           <HoldingsTable
             items={items}
@@ -113,6 +114,8 @@ function Dashboard({ onSignOut }) {
       )}
 
       {activeTab === 'stocks' && <StockPage />}
+
+      {activeTab === 'reports' && <ReportsPage />}
 
       {activeTab === 'add-item' && (
         <div className="mx-auto max-w-3xl">

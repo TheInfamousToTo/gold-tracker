@@ -176,6 +176,24 @@ Only numeric data is sent: price history and per-karat totals. Item names, vendo
 never leave the database, and the returned recommendation is validated against a fixed schema
 before it is stored.
 
+## 🗓️ Monthly report
+
+On the 1st of each month (checked hourly, and on startup if a month was missed) the API
+builds a report for the previous month and saves it to `monthly_reports`:
+
+-   Per item: weight, purchase price per gram, today's price per gram, total gain, and the
+    gain during the month (from the month's opening price, or the purchase price if bought
+    that month).
+-   Each metal's open, close and range for the month, purchases made, budget used.
+-   When AI is enabled, a written review with concrete next steps (web search for market
+    news when *news* is on in advisor settings). Item names are replaced with neutral labels
+    before anything is sent to the model.
+
+Set `DISCORD_WEBHOOK_URL` to post the summary, a fixed-width table and the review to a
+Discord channel. The **Reports** tab lists past reports and can generate last month or the
+month so far on demand (`POST /api/reports/generate` with optional `{"month": "YYYY-MM"}`;
+regenerating a month replaces it and posts again).
+
 ## 📂 Project Structure
 
 - `/backend`: The Go API source code.
