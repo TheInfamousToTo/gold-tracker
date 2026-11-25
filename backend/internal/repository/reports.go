@@ -65,3 +65,24 @@ func (r *PostgresRepository) SaveReport(ctx context.Context, rep model.MonthlyRe
 		rep.Month, raw, rep.Analysis, rep.Model, rep.Error, rep.DiscordSentAt)
 	return err
 }
+
+// LastPriceAlert returns the date and price of the last drop alert sent
+// for the metal; ok is false when none has been sent.
+func (r *PostgresRepository) LastPriceAlert(ctx context.Context, metal string) (string, float64, bool, error) {
+	var on time.Time
+	var price float64
+	err := r.Pool.QueryRow(ctx, "SELECT alerted_on, price::float8 FROM price_alerts WHERE metal = $1", metal).Scan(&on, &price)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", 0, false, nil
+	}
+	if err != nil {
+		return "", 0, false, err
+	}
+	return on.Format("2006-01-02"), price, true, nil
+}
+
+func (r *PostgresRepository) SavePriceAlert(ctx context.Context, metal, date string, price float64) error {
+	_, err := r.Pool.Exec(ctx, `INSERT INTO price_alerts (metal, alerted_on, price) VALUES ($1, $2::date, $3)
+		ON CONFLICT (metal) DO UPDATE SET alerted_on = EXCLUDED.alerted_on, price = EXCLUDED.price`, metal, date, price)
+	return err
+}

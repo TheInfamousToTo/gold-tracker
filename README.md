@@ -194,6 +194,10 @@ Discord channel. The **Reports** tab lists past reports and can generate last mo
 month so far on demand (`POST /api/reports/generate` with optional `{"month": "YYYY-MM"}`;
 regenerating a month replaces it and posts again).
 
+The same webhook gets a **price-drop alert** when gold falls 5% or silver 8% below its
+highest price of the past week. Each slide alerts once, then again only after a further
+full drop or a week later.
+
 ## 📂 Project Structure
 
 - `/backend`: The Go API source code.
