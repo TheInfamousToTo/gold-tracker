@@ -51,6 +51,12 @@ func main() {
 	h := api.NewHandler(repo, aiService, reports)
 
 	r := gin.Default()
+	// The login lockout keys on ClientIP. Trust X-Forwarded-For hops only
+	// from private addresses (the UI's nginx, the ingress), so a client
+	// can't dodge the lockout by sending its own header.
+	if err := r.SetTrustedProxies([]string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1"}); err != nil {
+		log.Fatal(err)
+	}
 
 	// Cross-origin access is off unless an origin is named. A wildcard
 	// would let any page a viewer visits issue writes against this API.
