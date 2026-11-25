@@ -19,6 +19,10 @@ server {
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
         proxy_cache_bypass $http_upgrade;
+        # Append the connecting address so the API's login lockout sees
+        # the real client: it reads the last non-private hop, which a
+        # browser can't forge by sending its own X-Forwarded-For.
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
         # The Authorization header is NOT injected here. Doing so made
         # reaching this port equivalent to holding the token, which left
