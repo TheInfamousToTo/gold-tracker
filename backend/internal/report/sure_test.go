@@ -43,4 +43,9 @@ func TestMetalValue(t *testing.T) {
 	if v := metalValue(items, "gold", s, "2026-11-10"); v != 500+8*now21 {
 		t.Fatalf("after the ring: %v", v)
 	}
+	// Bought after the last price arrived: still counted on the latest date.
+	items = append(items, model.PortfolioItem{MetalType: "gold", PurityKarat: f(24), WeightGrams: 1, PurchaseDate: "2026-11-12"})
+	if v := metalValue(items, "gold", s, "2026-11-10"); v != 550+8*now21 {
+		t.Fatalf("same-day purchase missing: %v", v)
+	}
 }
