@@ -72,16 +72,18 @@ func sureDates(s []point, from, after string) []string {
 
 // metalValue is what the metal's holdings were worth on date: items
 // bought by then, at that day's price adjusted to each item's purity.
+// On the latest price date every item counts, so a purchase made after
+// the last price arrived still shows in Sure today.
 func metalValue(items []model.PortfolioItem, metal string, s []point, date string) float64 {
 	price, ok := onOrBefore(s, date)
 	if !ok {
 		return 0
 	}
-	latest := s[len(s)-1].Price
+	latest := s[len(s)-1]
 	var v float64
 	for _, it := range items {
-		if metalOf(it) == metal && it.PurchaseDate <= date {
-			v += it.WeightGrams * price * purityFactor(it, latest)
+		if metalOf(it) == metal && (it.PurchaseDate <= date || date == latest.Date) {
+			v += it.WeightGrams * price * purityFactor(it, latest.Price)
 		}
 	}
 	return round(v, 3)
