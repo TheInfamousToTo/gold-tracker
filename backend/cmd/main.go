@@ -45,6 +45,7 @@ func main() {
 	// Monthly report: generated on the 1st for the previous month and
 	// posted to Discord when DISCORD_WEBHOOK_URL is set.
 	reports := report.NewService(repo, &ai.CLIRunner{Timeout: aiCfg.Timeout}, aiCfg, os.Getenv("DISCORD_WEBHOOK_URL"))
+	reports.Sure = report.SureFromEnv()
 	go reports.Schedule(context.Background())
 
 	// Initialize handler

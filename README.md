@@ -198,6 +198,13 @@ The same webhook gets a **price-drop alert** when gold falls 5% or silver 8% bel
 highest price of the past week. Each slide alerts once, then again only after a further
 full drop or a week later.
 
+## 💰 Sure sync
+
+Set `SURE_URL`, `SURE_API_KEY` and `SURE_GOLD_ACCOUNT_ID` / `SURE_SILVER_ACCOUNT_ID` to post each
+metal's value to accounts in [Sure](https://github.com/we-promise/sure), so it counts in net worth
+there. The first run backfills from the first purchase (weekly, daily for the last 30 days); after
+that the latest day is posted hourly. Sure only receives the value, never item names or prices paid.
+
 ## 📂 Project Structure
 
 - `/backend`: The Go API source code.

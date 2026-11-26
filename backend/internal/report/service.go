@@ -27,6 +27,8 @@ type Repo interface {
 	SaveReport(ctx context.Context, rep model.MonthlyReport) error
 	LastPriceAlert(ctx context.Context, metal string) (date string, price float64, ok bool, err error)
 	SavePriceAlert(ctx context.Context, metal, date string, price float64) error
+	SureSyncedThrough(ctx context.Context, metal string) (date string, ok bool, err error)
+	SaveSureSynced(ctx context.Context, metal, date string) error
 }
 
 var ErrRunning = errors.New("a report is already being generated")
@@ -37,6 +39,8 @@ type Service struct {
 	aiCfg   ai.Config
 	webhook string
 	client  *http.Client
+	// Sure, when set, receives each metal's daily value.
+	Sure *Sure
 
 	mu        sync.Mutex
 	running   bool
@@ -172,10 +176,11 @@ func (s *Service) run(ctx context.Context, prompt string, tools []string) (strin
 
 // Schedule checks hourly: it generates last month's report once it is
 // missing (on the 1st, or the first boot after a missed 1st) and posts
-// an alert when a metal has dropped hard.
+// an alert when a metal has dropped hard, and keeps Sure up to date.
 func (s *Service) Schedule(ctx context.Context) {
 	check := func() {
 		s.CheckDrops(ctx)
+		s.SyncSure(ctx)
 		month := PreviousMonth(time.Now())
 		exists, err := s.repo.ReportExists(ctx, month)
 		if err != nil || exists {

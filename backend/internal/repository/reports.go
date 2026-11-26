@@ -86,3 +86,22 @@ func (r *PostgresRepository) SavePriceAlert(ctx context.Context, metal, date str
 		ON CONFLICT (metal) DO UPDATE SET alerted_on = EXCLUDED.alerted_on, price = EXCLUDED.price`, metal, date, price)
 	return err
 }
+
+// SureSyncedThrough is the last price date posted to Sure for the metal.
+func (r *PostgresRepository) SureSyncedThrough(ctx context.Context, metal string) (string, bool, error) {
+	var d time.Time
+	err := r.Pool.QueryRow(ctx, "SELECT synced_through FROM sure_sync WHERE metal = $1", metal).Scan(&d)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return d.Format("2006-01-02"), true, nil
+}
+
+func (r *PostgresRepository) SaveSureSynced(ctx context.Context, metal, date string) error {
+	_, err := r.Pool.Exec(ctx, `INSERT INTO sure_sync (metal, synced_through) VALUES ($1, $2::date)
+		ON CONFLICT (metal) DO UPDATE SET synced_through = EXCLUDED.synced_through`, metal, date)
+	return err
+}
